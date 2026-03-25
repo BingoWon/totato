@@ -50,16 +50,18 @@ export const api = {
 
 	model: () => request<ModelInfo>("/api/model"),
 
-	tokenize: (text: string) =>
+	tokenize: (text: string, signal?: AbortSignal) =>
 		request<{ tokens: TokenSpan[] }>("/api/tokenize", {
 			method: "POST",
 			body: JSON.stringify({ text }),
+			signal,
 		}),
 
-	predict: (text: string, systemPrompt: string | null, temperature: number, topK: number) =>
+	predict: (text: string, systemPrompt: string | null, temperature: number, topK: number, signal?: AbortSignal) =>
 		request<PredictResponse>("/api/predict", {
 			method: "POST",
 			body: JSON.stringify({ text, system_prompt: systemPrompt, temperature, top_k: topK }),
+			signal,
 		}),
 
 	reset: () => request<{ status: string }>("/api/reset", { method: "POST" }),

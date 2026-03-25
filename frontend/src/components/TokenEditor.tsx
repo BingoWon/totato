@@ -6,9 +6,9 @@ import type { TokenSpan } from "@/lib/api";
 interface Props {
 	text: string;
 	tokens: TokenSpan[];
-	cursor: number;
+	charOffset: number;
 	onTextChange: (text: string, charOffset: number) => void;
-	onCursorChange: (tokenIndex: number) => void;
+	onCharOffsetChange: (charOffset: number) => void;
 	onForcePredict: () => void;
 }
 
@@ -25,7 +25,7 @@ const TOKEN_COLORS = [
 ];
 
 const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
-	{ text, tokens, cursor, onTextChange, onCursorChange, onForcePredict },
+	{ text, tokens, charOffset, onTextChange, onCharOffsetChange, onForcePredict },
 	ref,
 ) {
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -44,16 +44,22 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 		return arr;
 	}, [tokens]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: cursor/focused control which DOM node has data-cursor
+	const synced = useMemo(() => {
+		if (!tokens.length) return false;
+		if (offsets[tokens.length] !== text.length) return false;
+		return tokens.map((t) => t.text).join("") === text;
+	}, [tokens, text, offsets]);
+
+	const tokenCursor = synced ? charOffsetToTokenCursor(tokens, offsets, charOffset) : -1;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: charOffset/focused drive cursor DOM changes
 	useEffect(() => {
 		const el = scrollRef.current?.querySelector("[data-cursor]");
 		el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-	}, [cursor, focused]);
-
-	const cursorOffset = offsets[cursor] ?? offsets[offsets.length - 1] ?? 0;
+	}, [charOffset, focused]);
 
 	function insertAt(chars: string) {
-		onTextChange(text.slice(0, cursorOffset) + chars + text.slice(cursorOffset), cursorOffset + chars.length);
+		onTextChange(text.slice(0, charOffset) + chars + text.slice(charOffset), charOffset + chars.length);
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent) {
@@ -79,33 +85,45 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 		switch (e.key) {
 			case "ArrowLeft":
 				e.preventDefault();
-				onCursorChange(Math.max(0, cursor - 1));
+				if (synced && tokenCursor > 0) {
+					onCharOffsetChange(offsets[tokenCursor - 1]);
+				} else {
+					onCharOffsetChange(Math.max(0, charOffset - 1));
+				}
 				break;
 			case "ArrowRight":
 				e.preventDefault();
-				onCursorChange(Math.min(tokens.length, cursor + 1));
+				if (synced && tokenCursor < tokens.length) {
+					onCharOffsetChange(offsets[tokenCursor + 1]);
+				} else {
+					onCharOffsetChange(Math.min(text.length, charOffset + 1));
+				}
 				break;
 			case "Home":
 				e.preventDefault();
-				onCursorChange(0);
+				onCharOffsetChange(0);
 				break;
 			case "End":
 				e.preventDefault();
-				onCursorChange(tokens.length);
+				onCharOffsetChange(text.length);
 				break;
 			case "Backspace": {
 				e.preventDefault();
-				if (cursor > 0) {
-					const start = offsets[cursor - 1];
-					onTextChange(text.slice(0, start) + text.slice(cursorOffset), start);
+				if (synced && tokenCursor > 0) {
+					const start = offsets[tokenCursor - 1];
+					onTextChange(text.slice(0, start) + text.slice(charOffset), start);
+				} else if (charOffset > 0) {
+					onTextChange(text.slice(0, charOffset - 1) + text.slice(charOffset), charOffset - 1);
 				}
 				break;
 			}
 			case "Delete": {
 				e.preventDefault();
-				if (cursor < tokens.length) {
-					const end = offsets[cursor + 1];
-					onTextChange(text.slice(0, cursorOffset) + text.slice(end), cursorOffset);
+				if (synced && tokenCursor < tokens.length) {
+					const end = offsets[tokenCursor + 1];
+					onTextChange(text.slice(0, charOffset) + text.slice(end), charOffset);
+				} else if (charOffset < text.length) {
+					onTextChange(text.slice(0, charOffset) + text.slice(charOffset + 1), charOffset);
 				}
 				break;
 			}
@@ -151,7 +169,8 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 	function handleTokenClick(e: React.MouseEvent, index: number) {
 		e.stopPropagation();
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		onCursorChange(e.clientX - rect.left < rect.width / 2 ? index : index + 1);
+		const target = e.clientX - rect.left < rect.width / 2 ? index : index + 1;
+		onCharOffsetChange(offsets[target]);
 		inputRef.current?.focus();
 	}
 
@@ -161,7 +180,7 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 			role="textbox"
 			tabIndex={-1}
 			onClick={() => {
-				onCursorChange(tokens.length);
+				onCharOffsetChange(text.length);
 				inputRef.current?.focus();
 			}}
 			onKeyDown={() => inputRef.current?.focus()}
@@ -187,11 +206,11 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 			/>
 
 			<div className="px-4 py-3 font-mono text-sm leading-relaxed whitespace-pre-wrap break-all min-h-[inherit]">
-				{tokens.length === 0 ? (
+				{!text ? (
 					<span className="text-zinc-600 pointer-events-none select-none">Start typing to explore tokens…</span>
-				) : (
+				) : synced ? (
 					<>
-						{focused && cursor === 0 && <CursorLine />}
+						{focused && tokenCursor === 0 && <CursorLine />}
 						{tokens.map((token, i) => (
 							<Fragment key={`${offsets[i]}:${token.id}`}>
 								<span
@@ -206,9 +225,15 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 								>
 									{renderTokenText(token.text)}
 								</span>
-								{focused && cursor === i + 1 && <CursorLine />}
+								{focused && tokenCursor === i + 1 && <CursorLine />}
 							</Fragment>
 						))}
+					</>
+				) : (
+					<>
+						{renderTokenText(text.slice(0, charOffset))}
+						{focused && <CursorLine />}
+						{renderTokenText(text.slice(charOffset))}
 					</>
 				)}
 			</div>
@@ -228,7 +253,7 @@ function CursorLine() {
 }
 
 function renderTokenText(text: string): React.ReactNode {
-	if (!text) return <span className="text-zinc-600 text-[10px]">∅</span>;
+	if (!text) return null;
 	if (!text.includes("\n")) return text;
 	const parts = text.split("\n");
 	return parts.map((part, idx) => (
@@ -244,20 +269,10 @@ function renderTokenText(text: string): React.ReactNode {
 	));
 }
 
-export function tokenCursorToCharOffset(tokens: TokenSpan[], cursor: number): number {
-	let offset = 0;
-	for (let i = 0; i < cursor && i < tokens.length; i++) {
-		offset += tokens[i].text.length;
-	}
-	return offset;
-}
-
-export function charOffsetToTokenCursor(tokens: TokenSpan[], offset: number): number {
+function charOffsetToTokenCursor(tokens: TokenSpan[], offsets: number[], offset: number): number {
 	if (offset <= 0) return 0;
-	let acc = 0;
 	for (let i = 0; i < tokens.length; i++) {
-		acc += tokens[i].text.length;
-		if (acc >= offset) return i + 1;
+		if (offsets[i + 1] >= offset) return i + 1;
 	}
 	return tokens.length;
 }

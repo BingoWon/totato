@@ -1,9 +1,16 @@
+import threading
 import time
 
 import mlx.core as mx
 from mlx_lm import load
 from mlx_lm.models.cache import make_prompt_cache
 from mlx_lm.utils import compute_bits_per_weight, get_total_parameters
+
+PREFILL_CHUNK = 512
+
+
+class Interrupted(Exception):
+    pass
 
 
 class TokenEngine:
@@ -14,6 +21,9 @@ class TokenEngine:
         self._cache = None
         self._cached_tokens: list[int] = []
         self._last_logits = None
+        self._lock = threading.Lock()
+        self._gen = 0
+        self._gen_lock = threading.Lock()
 
     def load_model(self):
         self.model, self.tokenizer = load(self.model_path)
@@ -22,59 +32,75 @@ class TokenEngine:
     def loaded(self) -> bool:
         return self.model is not None
 
+    def _next_gen(self) -> int:
+        with self._gen_lock:
+            self._gen += 1
+            return self._gen
+
+    def _is_current(self, gen: int) -> bool:
+        return self._gen == gen
+
     def predict(
         self,
         text: str,
         system_prompt: str | None = None,
         temperature: float = 1.0,
         top_k: int = 200,
-    ) -> dict:
-        tokens = self._encode(text, system_prompt)
-        if not tokens:
-            return {
-                "tokens": [],
-                "sequence_length": 0,
-                "vocab_size": self.tokenizer.vocab_size,
-            }
+    ) -> dict | None:
+        gen = self._next_gen()
 
-        common = self._common_prefix_len(tokens)
+        with self._lock:
+            if not self._is_current(gen):
+                return None
 
-        # Identical token sequence → reuse cached logits (fast path for param-only changes)
-        if common == len(tokens) == len(self._cached_tokens) and self._last_logits is not None:
-            dist = self._build_distribution(self._last_logits, temperature, top_k)
-            dist["cached"] = True
-            return dist
+            tokens = self._encode(text, system_prompt)
+            if not tokens:
+                return {
+                    "tokens": [],
+                    "sequence_length": 0,
+                    "vocab_size": self.tokenizer.vocab_size,
+                }
 
-        # Strict extension of cached sequence → incremental decode
-        can_extend = (
-            self._cache is not None
-            and common > 0
-            and common == len(self._cached_tokens)
-            and common < len(tokens)
-        )
+            common = self._common_prefix_len(tokens)
 
-        t0 = time.perf_counter()
+            if common == len(tokens) == len(self._cached_tokens) and self._last_logits is not None:
+                dist = self._build_distribution(self._last_logits, temperature, top_k)
+                dist["cached"] = True
+                return dist
 
-        if can_extend:
-            remaining = tokens[common:]
-        else:
-            self._cache = make_prompt_cache(self.model)
-            remaining = tokens
-
-        self._prefill(remaining)
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-
-        self._cached_tokens = list(tokens)
-        dist = self._build_distribution(self._last_logits, temperature, top_k)
-
-        if can_extend:
-            dist["step_ms"] = round(elapsed_ms, 1)
-        else:
-            dist["prefill_ms"] = round(elapsed_ms, 1)
-            dist["prefill_tps"] = (
-                round(len(tokens) / (elapsed_ms / 1000), 1) if elapsed_ms > 0 else 0
+            can_extend = (
+                self._cache is not None
+                and common > 0
+                and common == len(self._cached_tokens)
+                and common < len(tokens)
             )
-        return dist
+
+            t0 = time.perf_counter()
+
+            if can_extend:
+                remaining = tokens[common:]
+            else:
+                self._cache = make_prompt_cache(self.model)
+                remaining = tokens
+
+            try:
+                self._prefill(remaining, gen)
+            except Interrupted:
+                self.reset()
+                return None
+
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            self._cached_tokens = list(tokens)
+            dist = self._build_distribution(self._last_logits, temperature, top_k)
+
+            if can_extend:
+                dist["step_ms"] = round(elapsed_ms, 1)
+            else:
+                dist["prefill_ms"] = round(elapsed_ms, 1)
+                dist["prefill_tps"] = (
+                    round(len(tokens) / (elapsed_ms / 1000), 1) if elapsed_ms > 0 else 0
+                )
+            return dist
 
     def _encode(self, text: str, system_prompt: str | None) -> list[int]:
         if system_prompt:
@@ -91,17 +117,21 @@ class TokenEngine:
                 return i
         return n
 
-    def _prefill(self, tokens: list[int]):
+    def _prefill(self, tokens: list[int], gen: int):
         arr = mx.array(tokens)
         total = len(arr)
         pos = 0
-        chunk = 2048
 
         while total - pos > 1:
-            n = min(chunk, total - pos - 1)
+            if not self._is_current(gen):
+                raise Interrupted
+            n = min(PREFILL_CHUNK, total - pos - 1)
             self.model(arr[pos : pos + n][None], cache=self._cache)
             mx.eval([c.state for c in self._cache])
             pos += n
+
+        if not self._is_current(gen):
+            raise Interrupted
 
         logits = self.model(arr[pos:][None], cache=self._cache)
         self._last_logits = logits[0, -1, :]

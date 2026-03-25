@@ -61,7 +61,10 @@ def tokenize(req: TokenizeRequest):
 def predict(req: PredictRequest):
     if not engine.loaded:
         raise HTTPException(503, "Model not loaded")
-    return {"distribution": engine.predict(req.text, req.system_prompt, req.temperature, req.top_k)}
+    result = engine.predict(req.text, req.system_prompt, req.temperature, req.top_k)
+    if result is None:
+        raise HTTPException(409, "Superseded by newer request")
+    return {"distribution": result}
 
 
 @app.post("/api/reset")

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Distribution, type ModelInfo, type TokenCandidate, type TokenSpan } from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
-import TokenEditor, { charOffsetToTokenCursor, type TokenEditorHandle, tokenCursorToCharOffset } from "./TokenEditor";
+import TokenEditor, { type TokenEditorHandle } from "./TokenEditor";
 import TokenList from "./TokenList";
 
 export default function Explorer() {
@@ -19,13 +19,12 @@ export default function Explorer() {
 	const [error, setError] = useState<string | null>(null);
 
 	const editorRef = useRef<TokenEditorHandle>(null);
-	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const predictIdRef = useRef(0);
-	const tokenizeIdRef = useRef(0);
+	const tokenizeDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const predictDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const tokenizeAbortRef = useRef<AbortController | null>(null);
+	const predictAbortRef = useRef<AbortController | null>(null);
 	const stateRef = useRef({ text, systemPrompt, temperature, topK });
 	stateRef.current = { text, systemPrompt, temperature, topK };
-
-	const cursor = charOffsetToTokenCursor(tokens, charOffset);
 
 	useEffect(() => {
 		api
@@ -34,43 +33,59 @@ export default function Explorer() {
 			.catch(() => {});
 	}, []);
 
-	async function fetchTokens(t: string) {
+	function fetchTokens(t: string) {
+		tokenizeAbortRef.current?.abort();
+		clearTimeout(tokenizeDebounceRef.current);
+
 		if (!t) {
 			setTokens([]);
 			return;
 		}
-		const id = ++tokenizeIdRef.current;
-		try {
-			const res = await api.tokenize(t);
-			if (tokenizeIdRef.current === id) setTokens(res.tokens);
-		} catch {
-			/* non-critical */
-		}
+
+		const controller = new AbortController();
+		tokenizeAbortRef.current = controller;
+
+		tokenizeDebounceRef.current = setTimeout(async () => {
+			try {
+				const res = await api.tokenize(t, controller.signal);
+				if (!controller.signal.aborted) setTokens(res.tokens);
+			} catch {
+				/* aborted or failed */
+			}
+		}, 80);
 	}
 
-	async function fetchPrediction(t: string, sp: string, temp: number, tk: number) {
+	function fetchPrediction(t: string, sp: string, temp: number, tk: number) {
+		predictAbortRef.current?.abort();
+
 		if (!t.trim()) {
 			setDistribution(null);
+			setLoading(false);
 			return;
 		}
-		const id = ++predictIdRef.current;
+
+		const controller = new AbortController();
+		predictAbortRef.current = controller;
 		setLoading(true);
 		setError(null);
-		try {
-			const res = await api.predict(t, sp || null, temp, tk);
-			if (predictIdRef.current !== id) return;
-			setDistribution(res.distribution);
-		} catch (e) {
-			if (predictIdRef.current !== id) return;
-			setError(e instanceof Error ? e.message : "Prediction failed");
-		} finally {
-			if (predictIdRef.current === id) setLoading(false);
-		}
+
+		api
+			.predict(t, sp || null, temp, tk, controller.signal)
+			.then((res) => {
+				if (!controller.signal.aborted) setDistribution(res.distribution);
+			})
+			.catch((e) => {
+				if (controller.signal.aborted) return;
+				setError(e instanceof Error ? e.message : "Prediction failed");
+			})
+			.finally(() => {
+				if (!controller.signal.aborted) setLoading(false);
+			});
 	}
 
 	function schedulePrediction(t: string, sp: string, temp: number, tk: number, delay = 400) {
-		clearTimeout(debounceRef.current);
-		debounceRef.current = setTimeout(() => fetchPrediction(t, sp, temp, tk), delay);
+		clearTimeout(predictDebounceRef.current);
+		predictDebounceRef.current = setTimeout(() => fetchPrediction(t, sp, temp, tk), delay);
 	}
 
 	function handleTextChange(newText: string, newCharOffset: number) {
@@ -80,18 +95,14 @@ export default function Explorer() {
 		schedulePrediction(newText, systemPrompt, temperature, topK);
 	}
 
-	function handleCursorChange(tokenPos: number) {
-		setCharOffset(tokenCursorToCharOffset(tokens, tokenPos));
-	}
-
 	function selectToken(token: TokenCandidate) {
-		const newText = stateRef.current.text + token.text;
-		const { systemPrompt: sp, temperature: temp, topK: tk } = stateRef.current;
+		const s = stateRef.current;
+		const newText = s.text + token.text;
 		setText(newText);
 		setCharOffset(newText.length);
 		fetchTokens(newText);
-		clearTimeout(debounceRef.current);
-		fetchPrediction(newText, sp, temp, tk);
+		clearTimeout(predictDebounceRef.current);
+		fetchPrediction(newText, s.systemPrompt, s.temperature, s.topK);
 		requestAnimationFrame(() => editorRef.current?.focus());
 	}
 
@@ -113,7 +124,7 @@ export default function Explorer() {
 	}
 
 	function forcePredict() {
-		clearTimeout(debounceRef.current);
+		clearTimeout(predictDebounceRef.current);
 		fetchPrediction(text, systemPrompt, temperature, topK);
 	}
 
@@ -170,9 +181,9 @@ export default function Explorer() {
 							ref={editorRef}
 							text={text}
 							tokens={tokens}
-							cursor={cursor}
+							charOffset={charOffset}
 							onTextChange={handleTextChange}
-							onCursorChange={handleCursorChange}
+							onCharOffsetChange={setCharOffset}
 							onForcePredict={forcePredict}
 						/>
 						{error && <p className="text-red-400 text-xs mt-2">{error}</p>}
