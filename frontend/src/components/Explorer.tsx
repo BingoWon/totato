@@ -1,27 +1,33 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, type Distribution, type ModelInfo, type TokenCandidate } from "@/lib/api";
+import { api, type Distribution, type ModelInfo, type TokenCandidate, type TokenSpan } from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
+import TokenEditor, { charOffsetToTokenCursor, type TokenEditorHandle, tokenCursorToCharOffset } from "./TokenEditor";
 import TokenList from "./TokenList";
 
 export default function Explorer() {
 	const [text, setText] = useState("");
-	const [systemPrompt, setSystemPrompt] = useState("");
+	const [tokens, setTokens] = useState<TokenSpan[]>([]);
+	const [charOffset, setCharOffset] = useState(0);
 	const [distribution, setDistribution] = useState<Distribution | null>(null);
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
+	const [systemPrompt, setSystemPrompt] = useState("");
 	const [temperature, setTemperature] = useState(1.0);
 	const [topK, setTopK] = useState(200);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
-	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const requestIdRef = useRef(0);
+	const editorRef = useRef<TokenEditorHandle>(null);
+	const predictDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const predictIdRef = useRef(0);
+	const tokenizeIdRef = useRef(0);
 	const textRef = useRef(text);
 	const sysRef = useRef(systemPrompt);
 	textRef.current = text;
 	sysRef.current = systemPrompt;
+
+	const cursor = charOffsetToTokenCursor(tokens, charOffset);
 
 	useEffect(() => {
 		api
@@ -30,40 +36,69 @@ export default function Explorer() {
 			.catch(() => {});
 	}, []);
 
-	async function predict(t: string, sp: string, temp: number, tk: number) {
+	async function doTokenize(t: string) {
+		if (!t) {
+			setTokens([]);
+			return;
+		}
+		const id = ++tokenizeIdRef.current;
+		try {
+			const res = await api.tokenize(t);
+			if (tokenizeIdRef.current === id) setTokens(res.tokens);
+		} catch {
+			/* non-critical */
+		}
+	}
+
+	async function doPredict(t: string, sp: string, temp: number, tk: number) {
 		if (!t.trim()) {
 			setDistribution(null);
 			return;
 		}
-		const id = ++requestIdRef.current;
+		const id = ++predictIdRef.current;
 		setLoading(true);
 		setError(null);
 		try {
 			const res = await api.predict(t, sp || null, temp, tk);
-			if (requestIdRef.current !== id) return;
+			if (predictIdRef.current !== id) return;
 			setDistribution(res.distribution);
 		} catch (e) {
-			if (requestIdRef.current !== id) return;
+			if (predictIdRef.current !== id) return;
 			setError(e instanceof Error ? e.message : "Prediction failed");
 		} finally {
-			if (requestIdRef.current === id) setLoading(false);
+			if (predictIdRef.current === id) setLoading(false);
 		}
 	}
 
 	function schedulePrediction(t: string, sp: string, temp: number, tk: number, delay = 400) {
-		clearTimeout(debounceRef.current);
-		debounceRef.current = setTimeout(() => predict(t, sp, temp, tk), delay);
+		clearTimeout(predictDebounceRef.current);
+		predictDebounceRef.current = setTimeout(() => doPredict(t, sp, temp, tk), delay);
 	}
 
-	function handleTextChange(newText: string) {
+	function handleTextChange(newText: string, newCharOffset: number) {
 		setText(newText);
+		setCharOffset(newCharOffset);
+		doTokenize(newText);
 		schedulePrediction(newText, systemPrompt, temperature, topK);
-		autoResize();
 	}
 
-	function handleSystemPromptChange(newPrompt: string) {
-		setSystemPrompt(newPrompt);
-		if (text.trim()) schedulePrediction(text, newPrompt, temperature, topK);
+	function handleCursorChange(tokenPos: number) {
+		setCharOffset(tokenCursorToCharOffset(tokens, tokenPos));
+	}
+
+	function selectPredictedToken(token: TokenCandidate) {
+		const newText = text + token.text;
+		setText(newText);
+		setCharOffset(newText.length);
+		doTokenize(newText);
+		clearTimeout(predictDebounceRef.current);
+		doPredict(newText, systemPrompt, temperature, topK);
+		requestAnimationFrame(() => editorRef.current?.focus());
+	}
+
+	function handleSystemPromptChange(sp: string) {
+		setSystemPrompt(sp);
+		if (text.trim()) schedulePrediction(text, sp, temperature, topK);
 	}
 
 	function handleTemperatureChange(v: number) {
@@ -76,60 +111,31 @@ export default function Explorer() {
 		if (textRef.current.trim()) schedulePrediction(textRef.current, sysRef.current, temperature, v, 150);
 	}
 
-	function selectToken(token: TokenCandidate) {
-		const newText = text + token.text;
-		setText(newText);
-		clearTimeout(debounceRef.current);
-		predict(newText, systemPrompt, temperature, topK);
-		requestAnimationFrame(() => {
-			const el = textareaRef.current;
-			if (el) {
-				el.focus();
-				el.selectionStart = newText.length;
-				el.selectionEnd = newText.length;
-				autoResize();
-			}
-		});
-	}
-
-	function autoResize() {
-		requestAnimationFrame(() => {
-			const el = textareaRef.current;
-			if (el) {
-				el.style.height = "auto";
-				el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
-			}
-		});
+	function forcePredict() {
+		clearTimeout(predictDebounceRef.current);
+		doPredict(text, systemPrompt, temperature, topK);
 	}
 
 	useEffect(() => {
 		if (!distribution || loading) return;
 		function onKey(e: KeyboardEvent) {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-			const tokens = distribution?.tokens;
-			if (!tokens?.length) return;
+			const t = distribution?.tokens;
+			if (!t?.length) return;
 			if (e.key === "Enter") {
 				e.preventDefault();
-				selectToken(tokens[0]);
+				selectPredictedToken(t[0]);
 				return;
 			}
 			const n = Number.parseInt(e.key, 10);
-			if (n >= 1 && n <= 9 && tokens[n - 1]) {
+			if (n >= 1 && n <= 9 && t[n - 1]) {
 				e.preventDefault();
-				selectToken(tokens[n - 1]);
+				selectPredictedToken(t[n - 1]);
 			}
 		}
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	});
-
-	function handleKeyDown(e: React.KeyboardEvent) {
-		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
-			clearTimeout(debounceRef.current);
-			predict(text, systemPrompt, temperature, topK);
-		}
-	}
 
 	return (
 		<div className="h-screen flex flex-col">
@@ -152,33 +158,33 @@ export default function Explorer() {
 			<div className="flex flex-1 min-h-0">
 				<main className="flex-1 flex flex-col min-h-0">
 					<section className="shrink-0 border-b border-zinc-800/60 p-5">
-						<textarea
-							ref={textareaRef}
-							value={text}
-							onChange={(e) => handleTextChange(e.target.value)}
-							onKeyDown={handleKeyDown}
-							placeholder="Start typing to see next-token predictions…"
-							rows={4}
-							className="w-full bg-zinc-900/70 border border-zinc-800 rounded-lg px-4 py-3 text-sm font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-violet-500/40 placeholder:text-zinc-600"
-							style={{ resize: "none", overflow: "auto", minHeight: "6rem", maxHeight: "20rem" }}
+						<TokenEditor
+							ref={editorRef}
+							text={text}
+							tokens={tokens}
+							cursor={cursor}
+							onTextChange={handleTextChange}
+							onCursorChange={handleCursorChange}
+							onForcePredict={forcePredict}
 						/>
 						{error && <p className="text-red-400 text-xs mt-2">{error}</p>}
 						<div className="flex items-center gap-3 mt-2 text-[10px] text-zinc-600">
+							<span>{tokens.length} tokens</span>
+							<span>·</span>
 							<span>{text.length} chars</span>
-							{distribution?.sequence_length != null && (
+							{loading && (
 								<>
 									<span>·</span>
-									<span>{distribution.sequence_length} tokens</span>
+									<span className="text-violet-400 animate-pulse">Predicting…</span>
 								</>
 							)}
-							{loading && <span className="text-violet-400 animate-pulse">Predicting…</span>}
-							<span className="ml-auto opacity-50">Cmd+Enter to force predict</span>
+							<span className="ml-auto opacity-50">←→ nav · ⌫ del token · ⌘⌫ clear · ⌘↵ predict</span>
 						</div>
 					</section>
 
 					<section className="flex-1 min-h-0">
 						{distribution?.tokens.length ? (
-							<TokenList tokens={distribution.tokens} onSelect={selectToken} disabled={loading} />
+							<TokenList tokens={distribution.tokens} onSelect={selectPredictedToken} disabled={loading} />
 						) : (
 							<div className="h-full flex items-center justify-center text-zinc-600 text-sm">
 								{loading ? "Processing…" : "Type something to see predictions"}

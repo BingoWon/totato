@@ -83,7 +83,7 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 				<span>
 					{filtered.length} / {tokens.length} tokens shown
 				</span>
-				<span>Press 1-9 to quick-select · Enter for top-1</span>
+				<span>Click to select · Blur editor for 1-9 / Enter</span>
 			</div>
 		</div>
 	);

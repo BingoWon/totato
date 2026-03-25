@@ -45,6 +45,17 @@ def model_info():
     return engine.model_info
 
 
+class TokenizeRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/tokenize")
+def tokenize(req: TokenizeRequest):
+    if not engine.loaded:
+        raise HTTPException(503, "Model not loaded")
+    return {"tokens": engine.tokenize_text(req.text)}
+
+
 @app.post("/api/predict")
 def predict(req: PredictRequest):
     if not engine.loaded:

@@ -115,9 +115,23 @@ def test_reset():
     check("reset returns ok", r.get("status") == "ok")
 
 
+def test_tokenize():
+    print("\n== POST /api/tokenize ==")
+    r = api("POST", "/api/tokenize", {"text": "Hello world"})
+    tokens = r["tokens"]
+    check("returns tokens", len(tokens) > 0, f"{len(tokens)} tokens")
+    reconstructed = "".join(t["text"] for t in tokens)
+    check("reconstruction matches", reconstructed == "Hello world", repr(reconstructed))
+    check("each has id and text", all("id" in t and "text" in t for t in tokens))
+
+    r2 = api("POST", "/api/tokenize", {"text": ""})
+    check("empty text returns []", r2["tokens"] == [])
+
+
 if __name__ == "__main__":
     test_health()
     test_model()
+    test_tokenize()
     test_predict_basic()
     test_predict_with_system_prompt()
     test_predict_empty()

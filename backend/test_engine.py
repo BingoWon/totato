@@ -164,6 +164,23 @@ def test_performance(engine):
     print(f"  [i] Generated: {text!r}")
 
 
+def test_tokenize(engine):
+    print("\n== Tokenize Text ==")
+    tokens = engine.tokenize_text("Hello world")
+    check("returns tokens", len(tokens) > 0, f"{len(tokens)} tokens")
+    reconstructed = "".join(t["text"] for t in tokens)
+    check("reconstruction matches", reconstructed == "Hello world", repr(reconstructed))
+    check("each token has id", all("id" in t for t in tokens))
+    check("each token has text", all("text" in t for t in tokens))
+
+    empty = engine.tokenize_text("")
+    check("empty text returns []", empty == [])
+
+    special = engine.tokenize_text("  \n\t")
+    reconstructed_sp = "".join(t["text"] for t in special)
+    check("whitespace reconstructs", reconstructed_sp == "  \n\t", repr(reconstructed_sp))
+
+
 if __name__ == "__main__":
     from engine import TokenEngine
 
@@ -176,6 +193,7 @@ if __name__ == "__main__":
     test_system_prompt(engine)
     test_empty_text(engine)
     test_temperature_effect(engine)
+    test_tokenize(engine)
     test_performance(engine)
 
     print(f"\n{'=' * 40}")

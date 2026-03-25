@@ -6,6 +6,11 @@ export interface TokenCandidate {
 	rank: number;
 }
 
+export interface TokenSpan {
+	id: number;
+	text: string;
+}
+
 export interface Distribution {
 	tokens: TokenCandidate[];
 	sequence_length: number;
@@ -44,6 +49,12 @@ export const api = {
 	health: () => request<{ status: string }>("/api/health"),
 
 	model: () => request<ModelInfo>("/api/model"),
+
+	tokenize: (text: string) =>
+		request<{ tokens: TokenSpan[] }>("/api/tokenize", {
+			method: "POST",
+			body: JSON.stringify({ text }),
+		}),
 
 	predict: (text: string, systemPrompt: string | null, temperature: number, topK: number) =>
 		request<PredictResponse>("/api/predict", {

@@ -141,6 +141,21 @@ class TokenEngine:
             "vocab_size": int(probs.shape[0]),
         }
 
+    def tokenize_text(self, text: str) -> list[dict]:
+        if not text:
+            return []
+        ids = self.tokenizer.encode(text)
+        simple = [self.tokenizer.decode([tid]) for tid in ids]
+        if "".join(simple) == text:
+            return [{"id": int(tid), "text": s} for tid, s in zip(ids, simple, strict=True)]
+        result = []
+        decoded = ""
+        for i, tid in enumerate(ids):
+            full = self.tokenizer.decode(ids[: i + 1])
+            result.append({"id": int(tid), "text": full[len(decoded) :]})
+            decoded = full
+        return result
+
     @property
     def model_info(self) -> dict:
         if not self.loaded:
