@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", monospace;
+}
+
+input[type="range"] {
+  @apply appearance-none h-1.5 rounded-full bg-zinc-800 cursor-pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-3.5 h-3.5 rounded-full bg-violet-500 hover:bg-violet-400 transition-colors;
+}
