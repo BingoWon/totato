@@ -1,5 +1,5 @@
 export interface TokenCandidate {
-	token_id: number;
+	id: number;
 	text: string;
 	probability: number;
 	logit: number;

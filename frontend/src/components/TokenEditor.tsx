@@ -1,11 +1,7 @@
 "use client";
 
-import { Fragment, forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-
-export interface TokenSpan {
-	id: number;
-	text: string;
-}
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import type { TokenSpan } from "@/lib/api";
 
 interface Props {
 	text: string;
@@ -42,18 +38,22 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 		inputRef.current?.focus();
 	}, []);
 
+	const offsets = useMemo(() => {
+		const arr = [0];
+		for (const t of tokens) arr.push(arr[arr.length - 1] + t.text.length);
+		return arr;
+	}, [tokens]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: cursor/focused control which DOM node has data-cursor
 	useEffect(() => {
 		const el = scrollRef.current?.querySelector("[data-cursor]");
 		el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-	});
+	}, [cursor, focused]);
 
-	function co() {
-		return tokenCursorToCharOffset(tokens, cursor);
-	}
+	const cursorOffset = offsets[cursor] ?? offsets[offsets.length - 1] ?? 0;
 
 	function insertAt(chars: string) {
-		const offset = co();
-		onTextChange(text.slice(0, offset) + chars + text.slice(offset), offset + chars.length);
+		onTextChange(text.slice(0, cursorOffset) + chars + text.slice(cursorOffset), cursorOffset + chars.length);
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent) {
@@ -96,16 +96,16 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 			case "Backspace": {
 				e.preventDefault();
 				if (cursor > 0) {
-					const start = tokenCursorToCharOffset(tokens, cursor - 1);
-					onTextChange(text.slice(0, start) + text.slice(co()), start);
+					const start = offsets[cursor - 1];
+					onTextChange(text.slice(0, start) + text.slice(cursorOffset), start);
 				}
 				break;
 			}
 			case "Delete": {
 				e.preventDefault();
 				if (cursor < tokens.length) {
-					const end = tokenCursorToCharOffset(tokens, cursor + 1);
-					onTextChange(text.slice(0, co()) + text.slice(end), co());
+					const end = offsets[cursor + 1];
+					onTextChange(text.slice(0, cursorOffset) + text.slice(end), cursorOffset);
 				}
 				break;
 			}
@@ -193,7 +193,7 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 					<>
 						{focused && cursor === 0 && <CursorLine />}
 						{tokens.map((token, i) => (
-							<Fragment key={`t${token.id}p${tokenCursorToCharOffset(tokens, i)}`}>
+							<Fragment key={`${offsets[i]}:${token.id}`}>
 								<span
 									role="button"
 									tabIndex={-1}

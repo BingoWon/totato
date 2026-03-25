@@ -11,6 +11,18 @@ MODEL_PATH = os.environ.get(
     "mlx-community/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-6bit",
 )
 
+
+class PredictRequest(BaseModel):
+    text: str
+    system_prompt: str | None = None
+    temperature: float = 1.0
+    top_k: int = 200
+
+
+class TokenizeRequest(BaseModel):
+    text: str
+
+
 engine = TokenEngine(MODEL_PATH)
 
 
@@ -26,13 +38,6 @@ app = FastAPI(title="Token Explorer", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-class PredictRequest(BaseModel):
-    text: str
-    system_prompt: str | None = None
-    temperature: float = 1.0
-    top_k: int = 200
-
-
 @app.get("/api/health")
 def health():
     return {"status": "ready" if engine.loaded else "loading"}
@@ -45,23 +50,18 @@ def model_info():
     return engine.model_info
 
 
-class TokenizeRequest(BaseModel):
-    text: str
-
-
 @app.post("/api/tokenize")
 def tokenize(req: TokenizeRequest):
     if not engine.loaded:
         raise HTTPException(503, "Model not loaded")
-    return {"tokens": engine.tokenize_text(req.text)}
+    return {"tokens": engine.tokenize(req.text)}
 
 
 @app.post("/api/predict")
 def predict(req: PredictRequest):
     if not engine.loaded:
         raise HTTPException(503, "Model not loaded")
-    dist = engine.predict(req.text, req.system_prompt, req.temperature, req.top_k)
-    return {"distribution": dist}
+    return {"distribution": engine.predict(req.text, req.system_prompt, req.temperature, req.top_k)}
 
 
 @app.post("/api/reset")

@@ -2,20 +2,9 @@
 
 import time
 
+from test_helpers import check, summary
+
 MODEL = "mlx-community/Qwen3.5-4B-MLX-4bit"
-
-passed = 0
-failed = 0
-
-
-def check(name: str, condition: bool, detail: str = ""):
-    global passed, failed
-    if condition:
-        passed += 1
-        print(f"  [PASS] {name}" + (f"  ({detail})" if detail else ""))
-    else:
-        failed += 1
-        print(f"  [FAIL] {name}" + (f"  ({detail})" if detail else ""))
 
 
 def test_load(engine):
@@ -52,10 +41,14 @@ def test_predict_raw(engine):
     check("prefill_tps reported", prefill_tps > 0, f"{prefill_tps} tok/s")
 
     top = tokens[0]
-    check("top token has token_id", isinstance(top["token_id"], int))
+    check("top token has id", isinstance(top["id"], int))
     has_text = isinstance(top["text"], str) and len(top["text"]) > 0
     check("top token has text", has_text, repr(top["text"]))
-    check("top token has probability", 0 < top["probability"] <= 1.0, f"{top['probability']:.4f}")
+    check(
+        "top token has probability",
+        0 < top["probability"] <= 1.0,
+        f"{top['probability']:.4f}",
+    )
     check("top token has logit", isinstance(top["logit"], float), f"{top['logit']:.2f}")
     check("top token rank is 1", top["rank"] == 1)
 
@@ -136,7 +129,7 @@ def test_temperature_effect(engine):
     top_low = d_low["tokens"][0]["probability"]
     top_high = d_high["tokens"][0]["probability"]
     check(
-        "low temp → sharper distribution",
+        "low temp -> sharper distribution",
         top_low > top_high,
         f"low={top_low:.4f} high={top_high:.4f}",
     )
@@ -165,18 +158,18 @@ def test_performance(engine):
 
 
 def test_tokenize(engine):
-    print("\n== Tokenize Text ==")
-    tokens = engine.tokenize_text("Hello world")
+    print("\n== Tokenize ==")
+    tokens = engine.tokenize("Hello world")
     check("returns tokens", len(tokens) > 0, f"{len(tokens)} tokens")
     reconstructed = "".join(t["text"] for t in tokens)
     check("reconstruction matches", reconstructed == "Hello world", repr(reconstructed))
     check("each token has id", all("id" in t for t in tokens))
     check("each token has text", all("text" in t for t in tokens))
 
-    empty = engine.tokenize_text("")
+    empty = engine.tokenize("")
     check("empty text returns []", empty == [])
 
-    special = engine.tokenize_text("  \n\t")
+    special = engine.tokenize("  \n\t")
     reconstructed_sp = "".join(t["text"] for t in special)
     check("whitespace reconstructs", reconstructed_sp == "  \n\t", repr(reconstructed_sp))
 
@@ -184,19 +177,15 @@ def test_tokenize(engine):
 if __name__ == "__main__":
     from engine import TokenEngine
 
-    engine = TokenEngine(MODEL)
-    test_load(engine)
-    test_predict_raw(engine)
-    test_incremental(engine)
-    test_cache_reuse_same_text(engine)
-    test_edit_invalidates_cache(engine)
-    test_system_prompt(engine)
-    test_empty_text(engine)
-    test_temperature_effect(engine)
-    test_tokenize(engine)
-    test_performance(engine)
-
-    print(f"\n{'=' * 40}")
-    print(f"  {passed} passed, {failed} failed")
-    print(f"{'=' * 40}")
-    raise SystemExit(1 if failed else 0)
+    eng = TokenEngine(MODEL)
+    test_load(eng)
+    test_predict_raw(eng)
+    test_incremental(eng)
+    test_cache_reuse_same_text(eng)
+    test_edit_invalidates_cache(eng)
+    test_system_prompt(eng)
+    test_empty_text(eng)
+    test_temperature_effect(eng)
+    test_tokenize(eng)
+    test_performance(eng)
+    raise SystemExit(summary())

@@ -1,23 +1,12 @@
-"""Integration tests for the FastAPI /api/predict endpoint."""
+"""Integration tests for the FastAPI endpoints."""
 
 import json
 import urllib.request
 
+from test_helpers import check, summary
+
 BASE = "http://localhost:8001"
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
-passed = 0
-failed = 0
-
-
-def check(name: str, condition: bool, detail: str = ""):
-    global passed, failed
-    if condition:
-        passed += 1
-        print(f"  [PASS] {name}" + (f"  ({detail})" if detail else ""))
-    else:
-        failed += 1
-        print(f"  [FAIL] {name}" + (f"  ({detail})" if detail else ""))
 
 
 def api(method: str, path: str, body: dict | None = None) -> dict:
@@ -59,7 +48,7 @@ def test_predict_basic():
     check("has vocab_size", dist["vocab_size"] > 10_000, f"{dist['vocab_size']:,}")
 
     top = dist["tokens"][0]
-    required = ("token_id", "text", "probability", "logit", "rank")
+    required = ("id", "text", "probability", "logit", "rank")
     check("token has all fields", all(k in top for k in required))
     check("top rank is 1", top["rank"] == 1)
     check("probability in (0,1]", 0 < top["probability"] <= 1.0, f"{top['probability']:.4f}")
@@ -138,8 +127,4 @@ if __name__ == "__main__":
     test_predict_incremental()
     test_predict_cached_logits()
     test_reset()
-
-    print(f"\n{'=' * 40}")
-    print(f"  {passed} passed, {failed} failed")
-    print(f"{'=' * 40}")
-    raise SystemExit(1 if failed else 0)
+    raise SystemExit(summary())

@@ -17,7 +17,7 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 	const filtered = useMemo(() => {
 		if (!query) return tokens;
 		const q = query.toLowerCase();
-		return tokens.filter((t) => t.text.toLowerCase().includes(q) || String(t.token_id).includes(q));
+		return tokens.filter((t) => t.text.toLowerCase().includes(q) || String(t.id).includes(q));
 	}, [tokens, query]);
 
 	return (
@@ -49,7 +49,7 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 					return (
 						<button
 							type="button"
-							key={t.token_id}
+							key={t.id}
 							onClick={() => onSelect(t)}
 							className="w-full grid grid-cols-[3rem_minmax(5rem,1fr)_1fr_4.5rem_4rem] gap-2 items-center px-4 py-1.5 text-left text-xs hover:bg-zinc-800/50 transition-colors group"
 						>
@@ -57,7 +57,7 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 
 							<span
 								className={`font-mono truncate ${special ? "text-zinc-500 italic" : "text-zinc-200"}`}
-								title={`ID: ${t.token_id}`}
+								title={`ID: ${t.id}`}
 							>
 								{display}
 							</span>

@@ -129,7 +129,7 @@ class TokenEngine:
         return {
             "tokens": [
                 {
-                    "token_id": int(indices[i].item()),
+                    "id": int(indices[i].item()),
                     "text": self.tokenizer.decode([int(indices[i].item())]),
                     "probability": float(top_p[i].item()),
                     "logit": float(top_l[i].item()),
@@ -141,7 +141,7 @@ class TokenEngine:
             "vocab_size": int(probs.shape[0]),
         }
 
-    def tokenize_text(self, text: str) -> list[dict]:
+    def tokenize(self, text: str) -> list[dict]:
         if not text:
             return []
         ids = self.tokenizer.encode(text)

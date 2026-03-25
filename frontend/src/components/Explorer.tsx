@@ -19,13 +19,11 @@ export default function Explorer() {
 	const [error, setError] = useState<string | null>(null);
 
 	const editorRef = useRef<TokenEditorHandle>(null);
-	const predictDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const predictIdRef = useRef(0);
 	const tokenizeIdRef = useRef(0);
-	const textRef = useRef(text);
-	const sysRef = useRef(systemPrompt);
-	textRef.current = text;
-	sysRef.current = systemPrompt;
+	const stateRef = useRef({ text, systemPrompt, temperature, topK });
+	stateRef.current = { text, systemPrompt, temperature, topK };
 
 	const cursor = charOffsetToTokenCursor(tokens, charOffset);
 
@@ -36,7 +34,7 @@ export default function Explorer() {
 			.catch(() => {});
 	}, []);
 
-	async function doTokenize(t: string) {
+	async function fetchTokens(t: string) {
 		if (!t) {
 			setTokens([]);
 			return;
@@ -50,7 +48,7 @@ export default function Explorer() {
 		}
 	}
 
-	async function doPredict(t: string, sp: string, temp: number, tk: number) {
+	async function fetchPrediction(t: string, sp: string, temp: number, tk: number) {
 		if (!t.trim()) {
 			setDistribution(null);
 			return;
@@ -71,14 +69,14 @@ export default function Explorer() {
 	}
 
 	function schedulePrediction(t: string, sp: string, temp: number, tk: number, delay = 400) {
-		clearTimeout(predictDebounceRef.current);
-		predictDebounceRef.current = setTimeout(() => doPredict(t, sp, temp, tk), delay);
+		clearTimeout(debounceRef.current);
+		debounceRef.current = setTimeout(() => fetchPrediction(t, sp, temp, tk), delay);
 	}
 
 	function handleTextChange(newText: string, newCharOffset: number) {
 		setText(newText);
 		setCharOffset(newCharOffset);
-		doTokenize(newText);
+		fetchTokens(newText);
 		schedulePrediction(newText, systemPrompt, temperature, topK);
 	}
 
@@ -86,13 +84,14 @@ export default function Explorer() {
 		setCharOffset(tokenCursorToCharOffset(tokens, tokenPos));
 	}
 
-	function selectPredictedToken(token: TokenCandidate) {
-		const newText = text + token.text;
+	function selectToken(token: TokenCandidate) {
+		const newText = stateRef.current.text + token.text;
+		const { systemPrompt: sp, temperature: temp, topK: tk } = stateRef.current;
 		setText(newText);
 		setCharOffset(newText.length);
-		doTokenize(newText);
-		clearTimeout(predictDebounceRef.current);
-		doPredict(newText, systemPrompt, temperature, topK);
+		fetchTokens(newText);
+		clearTimeout(debounceRef.current);
+		fetchPrediction(newText, sp, temp, tk);
 		requestAnimationFrame(() => editorRef.current?.focus());
 	}
 
@@ -103,39 +102,48 @@ export default function Explorer() {
 
 	function handleTemperatureChange(v: number) {
 		setTemperature(v);
-		if (textRef.current.trim()) schedulePrediction(textRef.current, sysRef.current, v, topK, 150);
+		const s = stateRef.current;
+		if (s.text.trim()) schedulePrediction(s.text, s.systemPrompt, v, topK, 150);
 	}
 
 	function handleTopKChange(v: number) {
 		setTopK(v);
-		if (textRef.current.trim()) schedulePrediction(textRef.current, sysRef.current, temperature, v, 150);
+		const s = stateRef.current;
+		if (s.text.trim()) schedulePrediction(s.text, s.systemPrompt, temperature, v, 150);
 	}
 
 	function forcePredict() {
-		clearTimeout(predictDebounceRef.current);
-		doPredict(text, systemPrompt, temperature, topK);
+		clearTimeout(debounceRef.current);
+		fetchPrediction(text, systemPrompt, temperature, topK);
 	}
 
+	const selectTokenRef = useRef(selectToken);
+	selectTokenRef.current = selectToken;
+	const distRef = useRef(distribution);
+	distRef.current = distribution;
+	const loadingRef = useRef(loading);
+	loadingRef.current = loading;
+
 	useEffect(() => {
-		if (!distribution || loading) return;
 		function onKey(e: KeyboardEvent) {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-			const t = distribution?.tokens;
+			if (loadingRef.current) return;
+			const t = distRef.current?.tokens;
 			if (!t?.length) return;
 			if (e.key === "Enter") {
 				e.preventDefault();
-				selectPredictedToken(t[0]);
+				selectTokenRef.current(t[0]);
 				return;
 			}
 			const n = Number.parseInt(e.key, 10);
 			if (n >= 1 && n <= 9 && t[n - 1]) {
 				e.preventDefault();
-				selectPredictedToken(t[n - 1]);
+				selectTokenRef.current(t[n - 1]);
 			}
 		}
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	});
+	}, []);
 
 	return (
 		<div className="h-screen flex flex-col">
@@ -184,7 +192,7 @@ export default function Explorer() {
 
 					<section className="flex-1 min-h-0">
 						{distribution?.tokens.length ? (
-							<TokenList tokens={distribution.tokens} onSelect={selectPredictedToken} disabled={loading} />
+							<TokenList tokens={distribution.tokens} onSelect={selectToken} disabled={loading} />
 						) : (
 							<div className="h-full flex items-center justify-center text-zinc-600 text-sm">
 								{loading ? "Processing…" : "Type something to see predictions"}
