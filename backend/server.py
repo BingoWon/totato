@@ -1,10 +1,11 @@
 import os
 from contextlib import asynccontextmanager
 
-from engine import TokenEngine
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from engine import TokenEngine
 
 MODEL_PATH = os.environ.get(
     "MODEL_PATH",
