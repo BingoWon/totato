@@ -6,13 +6,6 @@ export interface TokenCandidate {
 	rank: number;
 }
 
-export interface HistoryEntry {
-	token_id: number;
-	text: string;
-	probability: number;
-	rank: number;
-}
-
 export interface Distribution {
 	tokens: TokenCandidate[];
 	sequence_length: number;
@@ -20,6 +13,7 @@ export interface Distribution {
 	prefill_ms?: number;
 	prefill_tps?: number;
 	step_ms?: number;
+	cached?: boolean;
 }
 
 export interface ModelInfo {
@@ -27,11 +21,11 @@ export interface ModelInfo {
 	total_parameters: number;
 	bits_per_weight: number;
 	vocab_size: number;
+	has_chat_template: boolean;
 }
 
-export interface SessionResponse {
+export interface PredictResponse {
 	distribution: Distribution;
-	history: HistoryEntry[];
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -51,16 +45,10 @@ export const api = {
 
 	model: () => request<ModelInfo>("/api/model"),
 
-	init: (prompt: string, temperature: number, top_k: number) =>
-		request<SessionResponse>("/api/init", {
+	predict: (text: string, systemPrompt: string | null, temperature: number, topK: number) =>
+		request<PredictResponse>("/api/predict", {
 			method: "POST",
-			body: JSON.stringify({ prompt, temperature, top_k }),
-		}),
-
-	step: (token_id: number, probability: number, rank: number, temperature: number, top_k: number) =>
-		request<SessionResponse>("/api/step", {
-			method: "POST",
-			body: JSON.stringify({ token_id, probability, rank, temperature, top_k }),
+			body: JSON.stringify({ text, system_prompt: systemPrompt, temperature, top_k: topK }),
 		}),
 
 	reset: () => request<{ status: string }>("/api/reset", { method: "POST" }),

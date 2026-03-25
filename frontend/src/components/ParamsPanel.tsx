@@ -7,9 +7,10 @@ interface Props {
 	topK: number;
 	onTemperatureChange: (v: number) => void;
 	onTopKChange: (v: number) => void;
+	systemPrompt: string;
+	onSystemPromptChange: (v: string) => void;
 	modelInfo: ModelInfo | null;
 	distribution: Distribution | null;
-	historyLength: number;
 }
 
 export default function ParamsPanel({
@@ -17,12 +18,29 @@ export default function ParamsPanel({
 	topK,
 	onTemperatureChange,
 	onTopKChange,
+	systemPrompt,
+	onSystemPromptChange,
 	modelInfo,
 	distribution,
-	historyLength,
 }: Props) {
 	return (
 		<div className="p-5 space-y-6 text-sm">
+			<Section title="System Prompt">
+				<textarea
+					value={systemPrompt}
+					onChange={(e) => onSystemPromptChange(e.target.value)}
+					placeholder="Optional. When set, chat template is applied automatically."
+					rows={3}
+					className="w-full bg-zinc-900/70 border border-zinc-800 rounded-md px-3 py-2 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-violet-500/40 placeholder:text-zinc-600"
+					style={{ resize: "vertical", minHeight: "3rem", maxHeight: "12rem" }}
+				/>
+				{modelInfo && (
+					<p className="text-[10px] text-zinc-600 mt-1.5">
+						{modelInfo.has_chat_template ? "Chat template available" : "No chat template detected"}
+					</p>
+				)}
+			</Section>
+
 			<Section title="Parameters">
 				<div className="space-y-4">
 					<label className="block">
@@ -61,7 +79,7 @@ export default function ParamsPanel({
 			</Section>
 
 			{distribution && (
-				<Section title="Current Step">
+				<Section title="Inference">
 					<dl className="space-y-2">
 						{distribution.prefill_ms != null && (
 							<>
@@ -70,8 +88,8 @@ export default function ParamsPanel({
 							</>
 						)}
 						{distribution.step_ms != null && <Stat label="Step Latency" value={`${distribution.step_ms} ms`} />}
+						{distribution.cached && <Stat label="Cache" value="Logits reused" />}
 						<Stat label="Sequence Length" value={`${distribution.sequence_length} tokens`} />
-						<Stat label="Generated" value={`${historyLength} tokens`} />
 						<Stat label="Vocab Size" value={distribution.vocab_size.toLocaleString()} />
 					</dl>
 				</Section>
@@ -83,7 +101,7 @@ export default function ParamsPanel({
 						<Stat label="Path" value={modelInfo.model_path.split("/").pop() ?? modelInfo.model_path} />
 						<Stat label="Parameters" value={formatNum(modelInfo.total_parameters)} />
 						<Stat label="Bits/Weight" value={String(modelInfo.bits_per_weight)} />
-						{modelInfo.vocab_size && <Stat label="Vocab Size" value={modelInfo.vocab_size.toLocaleString()} />}
+						<Stat label="Vocab Size" value={modelInfo.vocab_size.toLocaleString()} />
 					</dl>
 				</Section>
 			)}

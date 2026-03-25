@@ -12,8 +12,8 @@ class TokenEngine:
         self.model = None
         self.tokenizer = None
         self._cache = None
-        self._tokens: list[int] = []
-        self._history: list[dict] = []
+        self._cached_tokens: list[int] = []
+        self._last_logits = None
 
     def load_model(self):
         self.model, self.tokenizer = load(self.model_path)
@@ -22,63 +22,96 @@ class TokenEngine:
     def loaded(self) -> bool:
         return self.model is not None
 
-    def init_session(self, prompt: str, temperature: float, top_k: int) -> dict:
-        self._cache = make_prompt_cache(self.model)
-        self._tokens = self.tokenizer.encode(prompt)
-        self._history = []
-
-        prompt_arr = mx.array(self._tokens)
-        t0 = time.perf_counter()
-
-        total = len(prompt_arr)
-        processed = 0
-        prefill_size = 2048
-
-        while total - processed > 1:
-            n = min(prefill_size, total - processed - 1)
-            self.model(prompt_arr[processed : processed + n][None], cache=self._cache)
-            mx.eval([c.state for c in self._cache])
-            processed += n
-
-        logits = self.model(prompt_arr[processed:][None], cache=self._cache)
-        next_logits = logits[0, -1, :]
-        mx.eval(next_logits)
-        mx.eval([c.state for c in self._cache])
-
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        dist = self._build_distribution(next_logits, temperature, top_k)
-        dist["prefill_ms"] = round(elapsed_ms, 1)
-        dist["prefill_tps"] = round(total / (elapsed_ms / 1000), 1) if elapsed_ms > 0 else 0
-        return dist
-
-    def step(
-        self, token_id: int, probability: float, rank: int, temperature: float, top_k: int
+    def predict(
+        self,
+        text: str,
+        system_prompt: str | None = None,
+        temperature: float = 1.0,
+        top_k: int = 200,
     ) -> dict:
-        self._history.append(
-            {
-                "token_id": token_id,
-                "text": self.tokenizer.decode([token_id]),
-                "probability": probability,
-                "rank": rank,
+        tokens = self._encode(text, system_prompt)
+        if not tokens:
+            return {
+                "tokens": [],
+                "sequence_length": 0,
+                "vocab_size": self.tokenizer.vocab_size,
             }
+
+        common = self._common_prefix_len(tokens)
+
+        # Identical token sequence → reuse cached logits (fast path for param-only changes)
+        if common == len(tokens) == len(self._cached_tokens) and self._last_logits is not None:
+            dist = self._build_distribution(self._last_logits, temperature, top_k)
+            dist["cached"] = True
+            return dist
+
+        # Strict extension of cached sequence → incremental decode
+        can_extend = (
+            self._cache is not None
+            and common > 0
+            and common == len(self._cached_tokens)
+            and common < len(tokens)
         )
-        self._tokens.append(token_id)
 
         t0 = time.perf_counter()
-        logits = self.model(mx.array([[token_id]]), cache=self._cache)
-        next_logits = logits[0, -1, :]
-        mx.eval(next_logits)
-        mx.eval([c.state for c in self._cache])
-        step_ms = (time.perf_counter() - t0) * 1000
 
-        dist = self._build_distribution(next_logits, temperature, top_k)
-        dist["step_ms"] = round(step_ms, 1)
+        if can_extend:
+            remaining = tokens[common:]
+        else:
+            self._cache = make_prompt_cache(self.model)
+            remaining = tokens
+
+        self._prefill(remaining)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        self._cached_tokens = list(tokens)
+        dist = self._build_distribution(self._last_logits, temperature, top_k)
+
+        if can_extend:
+            dist["step_ms"] = round(elapsed_ms, 1)
+        else:
+            dist["prefill_ms"] = round(elapsed_ms, 1)
+            dist["prefill_tps"] = (
+                round(len(tokens) / (elapsed_ms / 1000), 1) if elapsed_ms > 0 else 0
+            )
         return dist
+
+    def _encode(self, text: str, system_prompt: str | None) -> list[int]:
+        if system_prompt:
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            if text:
+                messages.append({"role": "user", "content": text})
+            return self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+        return self.tokenizer.encode(text) if text else []
+
+    def _common_prefix_len(self, tokens: list[int]) -> int:
+        n = min(len(tokens), len(self._cached_tokens))
+        for i in range(n):
+            if tokens[i] != self._cached_tokens[i]:
+                return i
+        return n
+
+    def _prefill(self, tokens: list[int]):
+        arr = mx.array(tokens)
+        total = len(arr)
+        pos = 0
+        chunk = 2048
+
+        while total - pos > 1:
+            n = min(chunk, total - pos - 1)
+            self.model(arr[pos : pos + n][None], cache=self._cache)
+            mx.eval([c.state for c in self._cache])
+            pos += n
+
+        logits = self.model(arr[pos:][None], cache=self._cache)
+        self._last_logits = logits[0, -1, :]
+        mx.eval(self._last_logits)
+        mx.eval([c.state for c in self._cache])
 
     def reset(self):
         self._cache = None
-        self._tokens = []
-        self._history = []
+        self._cached_tokens = []
+        self._last_logits = None
 
     def _build_distribution(self, logits: mx.array, temperature: float, top_k: int) -> dict:
         temp = max(temperature, 1e-7)
@@ -104,13 +137,9 @@ class TokenEngine:
                 }
                 for i in range(k)
             ],
-            "sequence_length": len(self._tokens),
+            "sequence_length": len(self._cached_tokens),
             "vocab_size": int(probs.shape[0]),
         }
-
-    @property
-    def history(self) -> list[dict]:
-        return list(self._history)
 
     @property
     def model_info(self) -> dict:
@@ -121,4 +150,8 @@ class TokenEngine:
             "total_parameters": get_total_parameters(self.model),
             "bits_per_weight": round(compute_bits_per_weight(self.model), 2),
             "vocab_size": self.tokenizer.vocab_size,
+            "has_chat_template": (
+                hasattr(self.tokenizer, "chat_template")
+                and self.tokenizer.chat_template is not None
+            ),
         }

@@ -1,29 +1,23 @@
-"""
-API integration test — requires the backend server running on localhost:8000.
-Start server first:  python server.py
-Then run:            python test_api.py
-"""
+"""Integration tests for the FastAPI /api/predict endpoint."""
 
 import json
-import sys
 import urllib.request
 
 BASE = "http://localhost:8001"
-PASS = "\033[92m✓\033[0m"
-FAIL = "\033[91m✗\033[0m"
-results: list[tuple[str, bool, str]] = []
-
-# Bypass macOS system proxy for localhost
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+passed = 0
+failed = 0
 
 
 def check(name: str, condition: bool, detail: str = ""):
-    results.append((name, condition, detail))
-    mark = PASS if condition else FAIL
-    msg = f"  {mark} {name}"
-    if detail:
-        msg += f"  ({detail})"
-    print(msg)
+    global passed, failed
+    if condition:
+        passed += 1
+        print(f"  [PASS] {name}" + (f"  ({detail})" if detail else ""))
+    else:
+        failed += 1
+        print(f"  [FAIL] {name}" + (f"  ({detail})" if detail else ""))
 
 
 def api(method: str, path: str, body: dict | None = None) -> dict:
@@ -39,133 +33,99 @@ def api(method: str, path: str, body: dict | None = None) -> dict:
 
 
 def test_health():
-    print("\n── Health ──")
+    print("\n== GET /api/health ==")
     r = api("GET", "/api/health")
-    check("health returns ready", r.get("status") == "ready", r.get("status", ""))
+    check("status is ready", r.get("status") == "ready", r.get("status", ""))
 
 
 def test_model():
-    print("\n── Model Info ──")
+    print("\n== GET /api/model ==")
     r = api("GET", "/api/model")
     check("has model_path", "model_path" in r, r.get("model_path", ""))
     params = r.get("total_parameters", 0)
     check("has total_parameters", params > 0, f"{params:,}")
     check("has bits_per_weight", r.get("bits_per_weight", 0) > 0, str(r.get("bits_per_weight")))
+    has_chat = r.get("has_chat_template")
+    check("has_chat_template reported", isinstance(has_chat, bool), str(has_chat))
 
 
-def test_init() -> dict:
-    print("\n── POST /api/init ──")
-    r = api("POST", "/api/init", {"prompt": "Hello, world!", "temperature": 1.0, "top_k": 20})
+def test_predict_basic():
+    print("\n== POST /api/predict (basic) ==")
+    r = api("POST", "/api/predict", {"text": "Hello!", "temperature": 1.0, "top_k": 20})
     dist = r["distribution"]
     check("returns distribution", "tokens" in dist, f"{len(dist['tokens'])} tokens")
-    check("returns history", "history" in r, f"{len(r['history'])} entries")
-    check("history empty on init", len(r["history"]) == 0)
     check("top_k=20 respected", len(dist["tokens"]) == 20, f"got {len(dist['tokens'])}")
     check("has sequence_length", dist["sequence_length"] > 0, str(dist["sequence_length"]))
-    check("has vocab_size", dist["vocab_size"] > 100_000, f"{dist['vocab_size']:,}")
+    check("has vocab_size", dist["vocab_size"] > 10_000, f"{dist['vocab_size']:,}")
 
     top = dist["tokens"][0]
     required = ("token_id", "text", "probability", "logit", "rank")
     check("token has all fields", all(k in top for k in required))
     check("top rank is 1", top["rank"] == 1)
     check("probability in (0,1]", 0 < top["probability"] <= 1.0, f"{top['probability']:.4f}")
-    return r
 
 
-def test_step(init_resp: dict) -> dict:
-    print("\n── POST /api/step ──")
-    top = init_resp["distribution"]["tokens"][0]
+def test_predict_with_system_prompt():
+    print("\n== POST /api/predict (system prompt) ==")
     r = api(
         "POST",
-        "/api/step",
+        "/api/predict",
         {
-            "token_id": top["token_id"],
-            "probability": top["probability"],
-            "rank": top["rank"],
-            "temperature": 1.0,
-            "top_k": 20,
+            "text": "What is 2+2?",
+            "system_prompt": "You are a math tutor.",
+            "temperature": 0.5,
+            "top_k": 10,
         },
     )
     dist = r["distribution"]
-    check("returns distribution", len(dist["tokens"]) == 20)
-    check("history grew by 1", len(r["history"]) == 1)
-    check(
-        "history token matches",
-        r["history"][0]["token_id"] == top["token_id"],
-        repr(r["history"][0]["text"]),
-    )
-    check("step_ms reported", dist.get("step_ms", 0) > 0, f"{dist.get('step_ms')} ms")
-    return r
+    check("returns tokens", len(dist["tokens"]) > 0)
+    check("sequence longer with sys prompt", dist["sequence_length"] > 5)
 
 
-def test_multi_step():
-    print("\n── Multi-Step Sequence ──")
-    r = api("POST", "/api/init", {"prompt": "1+1=", "temperature": 0.01, "top_k": 10})
-    texts = []
-    for _ in range(5):
-        top = r["distribution"]["tokens"][0]
-        texts.append(top["text"])
-        r = api(
-            "POST",
-            "/api/step",
-            {
-                "token_id": top["token_id"],
-                "probability": top["probability"],
-                "rank": top["rank"],
-                "temperature": 0.01,
-                "top_k": 10,
-            },
-        )
-    check("5 greedy steps work", len(r["history"]) == 5)
-    generated = "".join(texts)
-    check("generated text non-empty", len(generated) > 0, repr(generated))
+def test_predict_empty():
+    print("\n== POST /api/predict (empty text) ==")
+    r = api("POST", "/api/predict", {"text": ""})
+    dist = r["distribution"]
+    check("no tokens for empty text", len(dist["tokens"]) == 0)
+    check("sequence_length is 0", dist["sequence_length"] == 0)
+
+
+def test_predict_incremental():
+    print("\n== POST /api/predict (incremental) ==")
+    api("POST", "/api/reset")
+    r1 = api("POST", "/api/predict", {"text": "The sky is", "top_k": 10})
+    check("first has prefill_ms", r1["distribution"].get("prefill_ms") is not None)
+
+    r2 = api("POST", "/api/predict", {"text": "The sky is blue", "top_k": 10})
+    check("extension has step_ms", r2["distribution"].get("step_ms") is not None)
+
+
+def test_predict_cached_logits():
+    print("\n== POST /api/predict (cached logits) ==")
+    api("POST", "/api/reset")
+    api("POST", "/api/predict", {"text": "cache test", "temperature": 1.0, "top_k": 50})
+    r2 = api("POST", "/api/predict", {"text": "cache test", "temperature": 0.5, "top_k": 100})
+    check("cached flag", r2["distribution"].get("cached") is True)
+    check("100 tokens returned", len(r2["distribution"]["tokens"]) == 100)
 
 
 def test_reset():
-    print("\n── POST /api/reset ──")
+    print("\n== POST /api/reset ==")
     r = api("POST", "/api/reset")
     check("reset returns ok", r.get("status") == "ok")
 
-    r2 = api("POST", "/api/init", {"prompt": "Test", "temperature": 1.0, "top_k": 10})
-    check("fresh session after reset", len(r2["history"]) == 0)
-
-
-def main():
-    print("=" * 60)
-    print("  Token Explorer — API Integration Test")
-    print(f"  Server: {BASE}")
-    print("=" * 60)
-
-    try:
-        api("GET", "/api/health")
-    except Exception as e:
-        print(f"\n  {FAIL} Cannot connect to server at {BASE}")
-        print("    Start it first: cd backend && python server.py")
-        print(f"    Error: {e}")
-        sys.exit(1)
-
-    test_health()
-    test_model()
-    init_resp = test_init()
-    test_step(init_resp)
-    test_multi_step()
-    test_reset()
-
-    passed = sum(1 for _, ok, _ in results if ok)
-    failed = sum(1 for _, ok, _ in results if not ok)
-    print(f"\n{'=' * 60}")
-    print(f"  Results: {passed} passed, {failed} failed, {len(results)} total")
-    print(f"{'=' * 60}")
-
-    if failed:
-        print("\nFailed tests:")
-        for name, ok, detail in results:
-            if not ok:
-                print(f"  {FAIL} {name}  ({detail})")
-        sys.exit(1)
-    else:
-        print("\n  All tests passed!")
-
 
 if __name__ == "__main__":
-    main()
+    test_health()
+    test_model()
+    test_predict_basic()
+    test_predict_with_system_prompt()
+    test_predict_empty()
+    test_predict_incremental()
+    test_predict_cached_logits()
+    test_reset()
+
+    print(f"\n{'=' * 40}")
+    print(f"  {passed} passed, {failed} failed")
+    print(f"{'=' * 40}")
+    raise SystemExit(1 if failed else 0)

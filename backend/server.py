@@ -26,16 +26,9 @@ app = FastAPI(title="Token Explorer", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-class InitRequest(BaseModel):
-    prompt: str
-    temperature: float = 1.0
-    top_k: int = 200
-
-
-class StepRequest(BaseModel):
-    token_id: int
-    probability: float
-    rank: int
+class PredictRequest(BaseModel):
+    text: str
+    system_prompt: str | None = None
     temperature: float = 1.0
     top_k: int = 200
 
@@ -52,20 +45,12 @@ def model_info():
     return engine.model_info
 
 
-@app.post("/api/init")
-def init_session(req: InitRequest):
+@app.post("/api/predict")
+def predict(req: PredictRequest):
     if not engine.loaded:
         raise HTTPException(503, "Model not loaded")
-    dist = engine.init_session(req.prompt, req.temperature, req.top_k)
-    return {"distribution": dist, "history": engine.history}
-
-
-@app.post("/api/step")
-def step(req: StepRequest):
-    if not engine.loaded:
-        raise HTTPException(503, "Model not loaded")
-    dist = engine.step(req.token_id, req.probability, req.rank, req.temperature, req.top_k)
-    return {"distribution": dist, "history": engine.history}
+    dist = engine.predict(req.text, req.system_prompt, req.temperature, req.top_k)
+    return {"distribution": dist}
 
 
 @app.post("/api/reset")

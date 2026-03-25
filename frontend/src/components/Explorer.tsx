@@ -1,20 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, type Distribution, type HistoryEntry, type ModelInfo, type TokenCandidate } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, type Distribution, type ModelInfo, type TokenCandidate } from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
 import TokenList from "./TokenList";
 
 export default function Explorer() {
-	const [prompt, setPrompt] = useState("");
+	const [text, setText] = useState("");
+	const [systemPrompt, setSystemPrompt] = useState("");
 	const [distribution, setDistribution] = useState<Distribution | null>(null);
-	const [history, setHistory] = useState<HistoryEntry[]>([]);
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 	const [temperature, setTemperature] = useState(1.0);
 	const [topK, setTopK] = useState(200);
 	const [loading, setLoading] = useState(false);
-	const [active, setActive] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const requestIdRef = useRef(0);
+	const textRef = useRef(text);
+	const sysRef = useRef(systemPrompt);
+	textRef.current = text;
+	sysRef.current = systemPrompt;
 
 	useEffect(() => {
 		api
@@ -23,12 +30,84 @@ export default function Explorer() {
 			.catch(() => {});
 	}, []);
 
+	async function predict(t: string, sp: string, temp: number, tk: number) {
+		if (!t.trim()) {
+			setDistribution(null);
+			return;
+		}
+		const id = ++requestIdRef.current;
+		setLoading(true);
+		setError(null);
+		try {
+			const res = await api.predict(t, sp || null, temp, tk);
+			if (requestIdRef.current !== id) return;
+			setDistribution(res.distribution);
+		} catch (e) {
+			if (requestIdRef.current !== id) return;
+			setError(e instanceof Error ? e.message : "Prediction failed");
+		} finally {
+			if (requestIdRef.current === id) setLoading(false);
+		}
+	}
+
+	function schedulePrediction(t: string, sp: string, temp: number, tk: number, delay = 400) {
+		clearTimeout(debounceRef.current);
+		debounceRef.current = setTimeout(() => predict(t, sp, temp, tk), delay);
+	}
+
+	function handleTextChange(newText: string) {
+		setText(newText);
+		schedulePrediction(newText, systemPrompt, temperature, topK);
+		autoResize();
+	}
+
+	function handleSystemPromptChange(newPrompt: string) {
+		setSystemPrompt(newPrompt);
+		if (text.trim()) schedulePrediction(text, newPrompt, temperature, topK);
+	}
+
+	function handleTemperatureChange(v: number) {
+		setTemperature(v);
+		if (textRef.current.trim()) schedulePrediction(textRef.current, sysRef.current, v, topK, 150);
+	}
+
+	function handleTopKChange(v: number) {
+		setTopK(v);
+		if (textRef.current.trim()) schedulePrediction(textRef.current, sysRef.current, temperature, v, 150);
+	}
+
+	function selectToken(token: TokenCandidate) {
+		const newText = text + token.text;
+		setText(newText);
+		clearTimeout(debounceRef.current);
+		predict(newText, systemPrompt, temperature, topK);
+		requestAnimationFrame(() => {
+			const el = textareaRef.current;
+			if (el) {
+				el.focus();
+				el.selectionStart = newText.length;
+				el.selectionEnd = newText.length;
+				autoResize();
+			}
+		});
+	}
+
+	function autoResize() {
+		requestAnimationFrame(() => {
+			const el = textareaRef.current;
+			if (el) {
+				el.style.height = "auto";
+				el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+			}
+		});
+	}
+
 	useEffect(() => {
 		if (!distribution || loading) return;
 		function onKey(e: KeyboardEvent) {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 			const tokens = distribution?.tokens;
-			if (!tokens) return;
+			if (!tokens?.length) return;
 			if (e.key === "Enter") {
 				e.preventDefault();
 				selectToken(tokens[0]);
@@ -44,43 +123,12 @@ export default function Explorer() {
 		return () => window.removeEventListener("keydown", onKey);
 	});
 
-	async function initSession() {
-		if (!prompt.trim() || loading) return;
-		setLoading(true);
-		setError(null);
-		try {
-			const res = await api.init(prompt, temperature, topK);
-			setDistribution(res.distribution);
-			setHistory(res.history);
-			setActive(true);
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Connection failed");
-		} finally {
-			setLoading(false);
+	function handleKeyDown(e: React.KeyboardEvent) {
+		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+			e.preventDefault();
+			clearTimeout(debounceRef.current);
+			predict(text, systemPrompt, temperature, topK);
 		}
-	}
-
-	async function selectToken(token: TokenCandidate) {
-		if (loading) return;
-		setLoading(true);
-		setError(null);
-		try {
-			const res = await api.step(token.token_id, token.probability, token.rank, temperature, topK);
-			setDistribution(res.distribution);
-			setHistory(res.history);
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Request failed");
-		} finally {
-			setLoading(false);
-		}
-	}
-
-	async function resetSession() {
-		await api.reset().catch(() => {});
-		setDistribution(null);
-		setHistory([]);
-		setActive(false);
-		setError(null);
 	}
 
 	return (
@@ -90,65 +138,50 @@ export default function Explorer() {
 					<h1 className="text-base font-semibold tracking-tight">Token Explorer</h1>
 					<p className="text-[11px] text-zinc-500 mt-0.5">Interactive Next Token Prediction</p>
 				</div>
-				{active && (
-					<button
-						type="button"
-						onClick={resetSession}
-						className="text-xs text-zinc-500 hover:text-zinc-300 px-3 py-1.5 rounded-md border border-zinc-800 hover:border-zinc-700 transition-colors"
-					>
-						Reset
-					</button>
+				{systemPrompt ? (
+					<span className="text-[10px] text-emerald-500/80 border border-emerald-800/40 px-2 py-0.5 rounded">
+						Chat Template Active
+					</span>
+				) : (
+					<span className="text-[10px] text-zinc-600 border border-zinc-800/40 px-2 py-0.5 rounded">
+						Raw Completion
+					</span>
 				)}
 			</header>
 
 			<div className="flex flex-1 min-h-0">
 				<main className="flex-1 flex flex-col min-h-0">
 					<section className="shrink-0 border-b border-zinc-800/60 p-5">
-						{!active ? (
-							<div className="flex gap-3">
-								<textarea
-									value={prompt}
-									onChange={(e) => setPrompt(e.target.value)}
-									placeholder="Enter your prompt…"
-									rows={3}
-									className="flex-1 bg-zinc-900/70 border border-zinc-800 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-violet-500/40 placeholder:text-zinc-600"
-									onKeyDown={(e) => {
-										if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) initSession();
-									}}
-								/>
-								<button
-									type="button"
-									onClick={initSession}
-									disabled={loading || !prompt.trim()}
-									className="self-end px-5 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors"
-								>
-									{loading ? "Loading…" : "Start"}
-								</button>
-							</div>
-						) : (
-							<div className="bg-zinc-900/40 rounded-lg p-4 text-sm font-mono leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all">
-								<span className="text-zinc-500">{prompt}</span>
-								{history.map((h) => (
-									<span
-										key={`${h.token_id}-${history.indexOf(h)}`}
-										className={`rounded-sm transition-colors hover:ring-1 hover:ring-zinc-500 ${rankBg(h.rank)}`}
-										title={`Rank #${h.rank} · ${(h.probability * 100).toFixed(1)}%`}
-									>
-										{h.text}
-									</span>
-								))}
-								<span className="inline-block w-1.5 h-4 bg-violet-500/80 animate-pulse align-text-bottom ml-px rounded-sm" />
-							</div>
-						)}
+						<textarea
+							ref={textareaRef}
+							value={text}
+							onChange={(e) => handleTextChange(e.target.value)}
+							onKeyDown={handleKeyDown}
+							placeholder="Start typing to see next-token predictions…"
+							rows={4}
+							className="w-full bg-zinc-900/70 border border-zinc-800 rounded-lg px-4 py-3 text-sm font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-violet-500/40 placeholder:text-zinc-600"
+							style={{ resize: "none", overflow: "auto", minHeight: "6rem", maxHeight: "20rem" }}
+						/>
 						{error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+						<div className="flex items-center gap-3 mt-2 text-[10px] text-zinc-600">
+							<span>{text.length} chars</span>
+							{distribution?.sequence_length != null && (
+								<>
+									<span>·</span>
+									<span>{distribution.sequence_length} tokens</span>
+								</>
+							)}
+							{loading && <span className="text-violet-400 animate-pulse">Predicting…</span>}
+							<span className="ml-auto opacity-50">Cmd+Enter to force predict</span>
+						</div>
 					</section>
 
 					<section className="flex-1 min-h-0">
-						{distribution ? (
+						{distribution?.tokens.length ? (
 							<TokenList tokens={distribution.tokens} onSelect={selectToken} disabled={loading} />
 						) : (
 							<div className="h-full flex items-center justify-center text-zinc-600 text-sm">
-								{loading ? "Processing prompt…" : "Enter a prompt to begin exploring"}
+								{loading ? "Processing…" : "Type something to see predictions"}
 							</div>
 						)}
 					</section>
@@ -158,21 +191,15 @@ export default function Explorer() {
 					<ParamsPanel
 						temperature={temperature}
 						topK={topK}
-						onTemperatureChange={setTemperature}
-						onTopKChange={setTopK}
+						onTemperatureChange={handleTemperatureChange}
+						onTopKChange={handleTopKChange}
+						systemPrompt={systemPrompt}
+						onSystemPromptChange={handleSystemPromptChange}
 						modelInfo={modelInfo}
 						distribution={distribution}
-						historyLength={history.length}
 					/>
 				</aside>
 			</div>
 		</div>
 	);
-}
-
-function rankBg(rank: number): string {
-	if (rank === 1) return "bg-emerald-500/15 text-emerald-200";
-	if (rank <= 5) return "bg-emerald-500/8";
-	if (rank <= 20) return "bg-amber-500/10";
-	return "bg-red-500/10";
 }
