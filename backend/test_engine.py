@@ -4,9 +4,9 @@ Tests the core MLX inference pipeline: load → prefill → step → distributio
 Run: python test_engine.py
 """
 
+import math
 import sys
 import time
-import math
 
 from engine import TokenEngine
 
@@ -56,14 +56,17 @@ def test_init_session(engine: TokenEngine) -> dict:
     tokens = dist["tokens"]
     check("distribution has tokens", len(tokens) > 0, f"{len(tokens)} tokens")
     check("top_k=50 respected", len(tokens) == 50, f"got {len(tokens)}")
-    check("sequence_length matches prompt", dist["sequence_length"] > 0, f"{dist['sequence_length']}")
+    seq_len = dist["sequence_length"]
+    check("sequence_length matches prompt", seq_len > 0, f"{seq_len}")
     check("vocab_size > 100k", dist["vocab_size"] > 100_000, f"{dist['vocab_size']:,}")
     check("prefill_ms reported", dist.get("prefill_ms", 0) > 0, f"{dist.get('prefill_ms')} ms")
-    check("prefill_tps reported", dist.get("prefill_tps", 0) > 0, f"{dist.get('prefill_tps')} tok/s")
+    prefill_tps = dist.get("prefill_tps", 0)
+    check("prefill_tps reported", prefill_tps > 0, f"{prefill_tps} tok/s")
 
     top = tokens[0]
     check("top token has token_id", isinstance(top["token_id"], int))
-    check("top token has text", isinstance(top["text"], str) and len(top["text"]) > 0, repr(top["text"]))
+    has_text = isinstance(top["text"], str) and len(top["text"]) > 0
+    check("top token has text", has_text, repr(top["text"]))
     check("top token has probability", 0 < top["probability"] <= 1.0, f"{top['probability']:.4f}")
     check("top token has logit", isinstance(top["logit"], float), f"{top['logit']:.2f}")
     check("top token rank is 1", top["rank"] == 1)
@@ -117,7 +120,7 @@ def test_step(engine: TokenEngine, init_dist: dict) -> dict:
     check(
         "history entry matches selected token",
         history[0]["token_id"] == top_token["token_id"],
-        f"selected: {repr(top_token['text'])}",
+        f"selected: {top_token['text']!r}",
     )
 
     probs = [t["probability"] for t in tokens]
@@ -128,7 +131,7 @@ def test_step(engine: TokenEngine, init_dist: dict) -> dict:
 def test_multi_step(engine: TokenEngine, prev_dist: dict):
     print("\n── Multi-Step (3 more tokens, always pick top-1) ──")
     dist = prev_dist
-    for i in range(3):
+    for _i in range(3):
         top = dist["tokens"][0]
         dist = engine.step(top["token_id"], top["probability"], top["rank"], 1.0, 50)
 
@@ -180,7 +183,7 @@ def test_non_greedy_selection(engine: TokenEngine):
     check(
         "can select non-top token (rank 5)",
         engine.history[-1]["rank"] == 5,
-        f"selected: {repr(fifth['text'])} (rank {fifth['rank']})",
+        f"selected: {fifth['text']!r} (rank {fifth['rank']})",
     )
     check("step after non-greedy returns valid dist", len(dist2["tokens"]) == 50)
 
@@ -215,7 +218,7 @@ def test_performance(engine: TokenEngine):
         1000 / avg_ms > 5,
         f"{1000 / avg_ms:.1f} tok/s",
     )
-    print(f"  ℹ Step times: {[f'{t:.0f}ms' for t in step_times]}")
+    print(f"  [i] Step times: {[f'{t:.0f}ms' for t in step_times]}")
 
 
 def main():

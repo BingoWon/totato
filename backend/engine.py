@@ -3,7 +3,7 @@ import time
 import mlx.core as mx
 from mlx_lm import load
 from mlx_lm.models.cache import make_prompt_cache
-from mlx_lm.utils import get_total_parameters, compute_bits_per_weight
+from mlx_lm.utils import compute_bits_per_weight, get_total_parameters
 
 
 class TokenEngine:

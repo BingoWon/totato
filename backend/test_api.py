@@ -4,8 +4,8 @@ Start server first:  python server.py
 Then run:            python test_api.py
 """
 
-import sys
 import json
+import sys
 import urllib.request
 
 BASE = "http://localhost:8001"
@@ -48,7 +48,8 @@ def test_model():
     print("\n── Model Info ──")
     r = api("GET", "/api/model")
     check("has model_path", "model_path" in r, r.get("model_path", ""))
-    check("has total_parameters", r.get("total_parameters", 0) > 0, f"{r.get('total_parameters', 0):,}")
+    params = r.get("total_parameters", 0)
+    check("has total_parameters", params > 0, f"{params:,}")
     check("has bits_per_weight", r.get("bits_per_weight", 0) > 0, str(r.get("bits_per_weight")))
 
 
@@ -64,7 +65,8 @@ def test_init() -> dict:
     check("has vocab_size", dist["vocab_size"] > 100_000, f"{dist['vocab_size']:,}")
 
     top = dist["tokens"][0]
-    check("token has all fields", all(k in top for k in ("token_id", "text", "probability", "logit", "rank")))
+    required = ("token_id", "text", "probability", "logit", "rank")
+    check("token has all fields", all(k in top for k in required))
     check("top rank is 1", top["rank"] == 1)
     check("probability in (0,1]", 0 < top["probability"] <= 1.0, f"{top['probability']:.4f}")
     return r
@@ -106,8 +108,13 @@ def test_multi_step():
         r = api(
             "POST",
             "/api/step",
-            {"token_id": top["token_id"], "probability": top["probability"], "rank": top["rank"],
-             "temperature": 0.01, "top_k": 10},
+            {
+                "token_id": top["token_id"],
+                "probability": top["probability"],
+                "rank": top["rank"],
+                "temperature": 0.01,
+                "top_k": 10,
+            },
         )
     check("5 greedy steps work", len(r["history"]) == 5)
     generated = "".join(texts)
@@ -133,7 +140,7 @@ def main():
         api("GET", "/api/health")
     except Exception as e:
         print(f"\n  {FAIL} Cannot connect to server at {BASE}")
-        print(f"    Start it first: cd backend && python server.py")
+        print("    Start it first: cd backend && python server.py")
         print(f"    Error: {e}")
         sys.exit(1)
 
