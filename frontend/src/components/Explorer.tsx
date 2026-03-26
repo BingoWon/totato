@@ -21,7 +21,7 @@ export default function Explorer() {
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [temperature, setTemperature] = useState(1.0);
-	const [topK, setTopK] = useState(200);
+	const [topK, setTopK] = useState(20);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 

@@ -5,6 +5,8 @@ import { api, type ModelInfo, type ScoreResult, SupersededError } from "@/lib/ap
 import { formatNum, probBg } from "@/lib/format";
 import TokenHeatmap from "./TokenHeatmap";
 
+const DEFAULT_SCORER_TOP_K = 5;
+
 export default function Scorer() {
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [userMessage, setUserMessage] = useState("");
@@ -13,7 +15,7 @@ export default function Scorer() {
 	const [selected, setSelected] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [topK, setTopK] = useState(5);
+	const [topK, setTopK] = useState(DEFAULT_SCORER_TOP_K);
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
 
@@ -99,9 +101,21 @@ export default function Scorer() {
 							/>
 						</label>
 						<label className="block">
-							<div className="flex justify-between mb-1.5">
+							<div className="flex justify-between items-center mb-1.5">
 								<span className="text-[10px] uppercase tracking-wider text-zinc-500">Alternatives per Token</span>
-								<span className="font-mono text-zinc-500 text-xs">{topK}</span>
+								<span className="flex items-center gap-2">
+									<span className="font-mono text-zinc-500 text-xs">{topK}</span>
+									{topK !== DEFAULT_SCORER_TOP_K && (
+										<button
+											type="button"
+											onClick={() => setTopK(DEFAULT_SCORER_TOP_K)}
+											className="text-[9px] text-zinc-600 hover:text-zinc-400 transition-colors"
+											title={`Reset to ${DEFAULT_SCORER_TOP_K}`}
+										>
+											Reset
+										</button>
+									)}
+								</span>
 							</div>
 							<input
 								type="range"

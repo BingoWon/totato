@@ -3,6 +3,9 @@
 import type { Distribution, ModelInfo } from "@/lib/api";
 import { formatNum } from "@/lib/format";
 
+const DEFAULT_TEMPERATURE = 1.0;
+const DEFAULT_TOP_K = 20;
+
 interface Props {
 	temperature: number;
 	topK: number;
@@ -48,10 +51,22 @@ export default function ParamsPanel({
 			<section>
 				<h3 className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider mb-3">Generation</h3>
 				<div className="space-y-4">
-					<label className="block">
-						<div className="flex justify-between mb-1.5">
+					<div>
+						<div className="flex justify-between items-center mb-1.5">
 							<span className="text-zinc-400 text-xs">Temperature</span>
-							<span className="font-mono text-zinc-500 text-xs">{temperature.toFixed(2)}</span>
+							<span className="flex items-center gap-2">
+								<span className="font-mono text-zinc-500 text-xs">{temperature.toFixed(2)}</span>
+								{temperature !== DEFAULT_TEMPERATURE && (
+									<button
+										type="button"
+										onClick={() => onTemperatureChange(DEFAULT_TEMPERATURE)}
+										className="text-[9px] text-zinc-600 hover:text-zinc-400 transition-colors"
+										title={`Reset to ${DEFAULT_TEMPERATURE}`}
+									>
+										Reset
+									</button>
+								)}
+							</span>
 						</div>
 						<input
 							type="range"
@@ -67,23 +82,35 @@ export default function ParamsPanel({
 							<span>Creative</span>
 						</div>
 						<p className="text-[10px] text-zinc-700 mt-1">Higher values spread probability across more tokens.</p>
-					</label>
+					</div>
 
-					<label className="block">
-						<div className="flex justify-between mb-1.5">
+					<div>
+						<div className="flex justify-between items-center mb-1.5">
 							<span className="text-zinc-400 text-xs">Top-K</span>
-							<span className="font-mono text-zinc-500 text-xs">{topK}</span>
+							<span className="flex items-center gap-2">
+								<span className="font-mono text-zinc-500 text-xs">{topK}</span>
+								{topK !== DEFAULT_TOP_K && (
+									<button
+										type="button"
+										onClick={() => onTopKChange(DEFAULT_TOP_K)}
+										className="text-[9px] text-zinc-600 hover:text-zinc-400 transition-colors"
+										title={`Reset to ${DEFAULT_TOP_K}`}
+									>
+										Reset
+									</button>
+								)}
+							</span>
 						</div>
 						<input
 							type="number"
 							min={1}
 							max={2000}
 							value={topK}
-							onChange={(e) => onTopKChange(Math.max(1, Number.parseInt(e.target.value, 10) || 200))}
+							onChange={(e) => onTopKChange(Math.max(1, Number.parseInt(e.target.value, 10) || DEFAULT_TOP_K))}
 							className="w-full bg-zinc-900/70 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
 						/>
 						<p className="text-[10px] text-zinc-700 mt-1">How many candidate tokens to display.</p>
-					</label>
+					</div>
 				</div>
 			</section>
 

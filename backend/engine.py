@@ -46,7 +46,7 @@ class TokenEngine:
         text: str,
         system_prompt: str | None = None,
         temperature: float = 1.0,
-        top_k: int = 200,
+        top_k: int = 20,
     ) -> dict | None:
         gen = self._next_gen()
 
