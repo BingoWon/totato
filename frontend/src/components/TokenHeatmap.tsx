@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment } from "react";
 import type { TokenScore } from "@/lib/api";
+import { fmtPct, formatTokenDisplay, probBg, renderNewlines } from "@/lib/format";
 
 interface Props {
 	tokens: TokenScore[];
@@ -32,7 +32,7 @@ export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 							}`}
 							style={{ backgroundColor: probBg(token.probability) }}
 						>
-							{renderText(token.text)}
+							{renderNewlines(token.text)}
 						</span>
 					))}
 				</div>
@@ -44,7 +44,7 @@ export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 					<div>
 						<div className="flex items-baseline gap-2 mb-1">
 							<span className="font-mono text-base px-1 rounded" style={{ backgroundColor: probBg(sel.probability) }}>
-								{formatDisplay(sel.text)}
+								{formatTokenDisplay(sel.text).display}
 							</span>
 							<span className="text-sm text-zinc-300">{fmtPct(sel.probability)}</span>
 						</div>
@@ -66,7 +66,7 @@ export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 									<span
 										className={`font-mono w-20 truncate shrink-0 ${isActual ? "text-zinc-100 font-medium" : "text-zinc-500"}`}
 									>
-										{formatDisplay(alt.text)}
+										{formatTokenDisplay(alt.text).display}
 									</span>
 									{isActual && <span className="text-[9px] text-zinc-600 shrink-0">← actual</span>}
 									<div className="flex-1 h-2 bg-zinc-800/60 rounded-full overflow-hidden">
@@ -87,42 +87,4 @@ export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 			)}
 		</div>
 	);
-}
-
-function probBg(p: number): string {
-	const log = Math.log10(Math.max(p, 1e-6));
-	const t = Math.min(1, Math.max(0, (log + 4) / 4));
-	const hue = t * 120;
-	return `hsla(${hue}, 75%, 45%, 0.35)`;
-}
-
-function fmtPct(p: number): string {
-	const pct = p * 100;
-	if (pct >= 99.95) return "~100%";
-	if (pct < 0.01) return "<0.01%";
-	if (pct < 1) return `${pct.toFixed(2)}%`;
-	return `${pct.toFixed(1)}%`;
-}
-
-function formatDisplay(text: string): string {
-	if (!text) return "∅";
-	if (/^\s+$/.test(text)) return text.replace(/ /g, "·").replace(/\n/g, "↵").replace(/\t/g, "→");
-	return text;
-}
-
-function renderText(text: string): React.ReactNode {
-	if (!text) return <span className="text-zinc-600 text-[10px]">∅</span>;
-	if (!text.includes("\n")) return text;
-	const parts = text.split("\n");
-	return parts.map((part, idx) => (
-		<Fragment key={`ln${idx.toString()}`}>
-			{part}
-			{idx < parts.length - 1 && (
-				<>
-					<span className="text-zinc-600/50 text-[10px]">↵</span>
-					{"\n"}
-				</>
-			)}
-		</Fragment>
-	));
 }

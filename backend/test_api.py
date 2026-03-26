@@ -1,6 +1,7 @@
 """Integration tests for the FastAPI endpoints."""
 
 import json
+import urllib.error
 import urllib.request
 
 from test_helpers import check, summary
@@ -19,12 +20,6 @@ def api(method: str, path: str, body: dict | None = None) -> dict:
     )
     with _opener.open(req) as resp:
         return json.loads(resp.read())
-
-
-def test_health():
-    print("\n== GET /api/health ==")
-    r = api("GET", "/api/health")
-    check("status is ready", r.get("status") == "ready", r.get("status", ""))
 
 
 def test_model():
@@ -177,7 +172,6 @@ def test_score_validation():
 
 
 if __name__ == "__main__":
-    test_health()
     test_model()
     test_tokenize()
     test_predict_basic()

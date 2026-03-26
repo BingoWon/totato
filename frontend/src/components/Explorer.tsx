@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, type Distribution, type ModelInfo, type TokenCandidate, type TokenSpan } from "@/lib/api";
+import {
+	api,
+	type Distribution,
+	type ModelInfo,
+	SupersededError,
+	type TokenCandidate,
+	type TokenSpan,
+} from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
 import TokenEditor, { type TokenEditorHandle } from "./TokenEditor";
 import TokenList from "./TokenList";
@@ -75,7 +82,7 @@ export default function Explorer() {
 				if (!controller.signal.aborted) setDistribution(res.distribution);
 			})
 			.catch((e) => {
-				if (controller.signal.aborted) return;
+				if (controller.signal.aborted || e instanceof SupersededError) return;
 				setError(e instanceof Error ? e.message : "Prediction failed");
 			})
 			.finally(() => {

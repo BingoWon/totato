@@ -2,6 +2,7 @@
 
 import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { TokenSpan } from "@/lib/api";
+import { renderNewlines } from "@/lib/format";
 
 interface Props {
 	text: string;
@@ -223,7 +224,7 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 									}}
 									title={`#${token.id}`}
 								>
-									{renderTokenText(token.text)}
+									{renderNewlines(token.text)}
 								</span>
 								{focused && tokenCursor === i + 1 && <CursorLine />}
 							</Fragment>
@@ -231,9 +232,9 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 					</>
 				) : (
 					<>
-						{renderTokenText(text.slice(0, charOffset))}
+						{renderNewlines(text.slice(0, charOffset))}
 						{focused && <CursorLine />}
-						{renderTokenText(text.slice(charOffset))}
+						{renderNewlines(text.slice(charOffset))}
 					</>
 				)}
 			</div>
@@ -250,23 +251,6 @@ function CursorLine() {
 			className="inline-block w-[2px] h-[1.15em] bg-violet-400 animate-pulse rounded-full align-text-bottom"
 		/>
 	);
-}
-
-function renderTokenText(text: string): React.ReactNode {
-	if (!text) return null;
-	if (!text.includes("\n")) return text;
-	const parts = text.split("\n");
-	return parts.map((part, idx) => (
-		<Fragment key={`ln${idx.toString()}`}>
-			{part}
-			{idx < parts.length - 1 && (
-				<>
-					<span className="text-zinc-600/50 text-[10px]">↵</span>
-					{"\n"}
-				</>
-			)}
-		</Fragment>
-	));
 }
 
 function charOffsetToTokenCursor(tokens: TokenSpan[], offsets: number[], offset: number): number {

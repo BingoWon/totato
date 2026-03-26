@@ -2,7 +2,7 @@
 
 export default function ErrorBoundary({ error, reset }: { error: Error; reset: () => void }) {
 	return (
-		<div className="h-screen flex items-center justify-center">
+		<div className="h-full flex items-center justify-center">
 			<div className="text-center space-y-4 max-w-md px-6">
 				<h2 className="text-lg font-semibold text-red-400">Something went wrong</h2>
 				<p className="text-sm text-zinc-400">{error.message}</p>

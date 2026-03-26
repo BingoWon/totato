@@ -213,6 +213,7 @@ class TokenEngine:
             try:
                 token_results = self._score_forward(full_tokens, reply_start, top_k, gen)
             except Interrupted:
+                self.reset()
                 return None
             elapsed_ms = (time.perf_counter() - t0) * 1000
 

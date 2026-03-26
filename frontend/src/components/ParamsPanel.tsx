@@ -1,6 +1,7 @@
 "use client";
 
 import type { Distribution, ModelInfo } from "@/lib/api";
+import { formatNum } from "@/lib/format";
 
 interface Props {
 	temperature: number;
@@ -127,11 +128,4 @@ function Row({ label, value }: { label: string; value: string }) {
 			<dd className="text-zinc-300 font-mono text-right truncate">{value}</dd>
 		</div>
 	);
-}
-
-function formatNum(n: number): string {
-	if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-	if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-	if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-	return String(n);
 }

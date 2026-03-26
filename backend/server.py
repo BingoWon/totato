@@ -41,13 +41,8 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Token Explorer", lifespan=lifespan)
+app = FastAPI(title="Totato", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-
-@app.get("/api/health")
-def health():
-    return {"status": "ready" if engine.loaded else "loading"}
 
 
 @app.get("/api/model")

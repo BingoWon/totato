@@ -52,11 +52,18 @@ export interface ScoreResult {
 	elapsed_ms: number;
 }
 
+export class SupersededError extends Error {
+	constructor() {
+		super("Superseded");
+	}
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, {
 		headers: { "Content-Type": "application/json" },
 		...init,
 	});
+	if (res.status === 409) throw new SupersededError();
 	if (!res.ok) {
 		const msg = await res.text().catch(() => res.statusText);
 		throw new Error(msg);
@@ -65,8 +72,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-	health: () => request<{ status: string }>("/api/health"),
-
 	model: () => request<ModelInfo>("/api/model"),
 
 	tokenize: (text: string, signal?: AbortSignal) =>

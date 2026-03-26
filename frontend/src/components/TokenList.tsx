@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { TokenCandidate } from "@/lib/api";
+import { formatTokenDisplay } from "@/lib/format";
 
 interface Props {
 	tokens: TokenCandidate[];
@@ -38,7 +39,7 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 				{filtered.map((t) => {
 					const pct = t.probability * 100;
 					const barW = (t.probability / maxProb) * 100;
-					const { display, special } = formatToken(t.text);
+					const { display, special } = formatTokenDisplay(t.text);
 					const isTop = t.rank <= 3;
 
 					return (
@@ -84,15 +85,6 @@ export default function TokenList({ tokens, onSelect, disabled }: Props) {
 			</div>
 		</div>
 	);
-}
-
-function formatToken(text: string): { display: string; special: boolean } {
-	if (!text) return { display: "∅", special: true };
-	if (/^\s+$/.test(text)) {
-		const d = text.replace(/ /g, "·").replace(/\n/g, "↵").replace(/\t/g, "→");
-		return { display: d, special: true };
-	}
-	return { display: text, special: false };
 }
 
 function barColor(rank: number): string {

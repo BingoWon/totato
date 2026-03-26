@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, type ModelInfo, type ScoreResult } from "@/lib/api";
+import { api, type ModelInfo, type ScoreResult, SupersededError } from "@/lib/api";
+import { formatNum, probBg } from "@/lib/format";
 import TokenHeatmap from "./TokenHeatmap";
 
 export default function Scorer() {
@@ -38,7 +39,7 @@ export default function Scorer() {
 			const res = await api.score(userMessage, assistantReply, systemPrompt || null, controller.signal);
 			if (!controller.signal.aborted) setResult(res);
 		} catch (e) {
-			if (controller.signal.aborted) return;
+			if (controller.signal.aborted || e instanceof SupersededError) return;
 			setError(e instanceof Error ? e.message : "Scoring failed");
 		} finally {
 			if (!controller.signal.aborted) setLoading(false);
@@ -100,7 +101,7 @@ export default function Scorer() {
 							<div className="text-[10px] text-zinc-600 space-y-0.5">
 								<p className="font-mono text-zinc-500">{modelInfo.model_path.split("/").pop()}</p>
 								<p>
-									{(modelInfo.total_parameters / 1e9).toFixed(1)}B params · {modelInfo.bits_per_weight} bits ·{" "}
+									{formatNum(modelInfo.total_parameters)} params · {modelInfo.bits_per_weight} bits ·{" "}
 									{modelInfo.vocab_size.toLocaleString()} vocab
 								</p>
 							</div>
@@ -225,11 +226,4 @@ function interpret(v: number): { label: string; color: string; description: stri
 			description: "The model would not typically generate this reply.",
 		};
 	return { label: "Very Unlikely", color: "text-red-400", description: "The model finds this reply very unexpected." };
-}
-
-function probBg(p: number): string {
-	const log = Math.log10(Math.max(p, 1e-6));
-	const t = Math.min(1, Math.max(0, (log + 4) / 4));
-	const hue = t * 120;
-	return `hsla(${hue}, 75%, 45%, 0.35)`;
 }
