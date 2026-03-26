@@ -9,7 +9,7 @@ from engine import TokenEngine
 
 MODEL_PATH = os.environ.get(
     "MODEL_PATH",
-    "mlx-community/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-6bit",
+    "mlx-community/Qwen3.5-4B-MLX-4bit",
 )
 
 
@@ -95,4 +95,10 @@ def reset():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=True,
+        reload_excludes=["test_*.py"],
+    )

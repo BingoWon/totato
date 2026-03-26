@@ -117,6 +117,65 @@ def test_tokenize():
     check("empty text returns []", r2["tokens"] == [])
 
 
+def test_score_basic():
+    print("\n== POST /api/score (basic) ==")
+    r = api(
+        "POST",
+        "/api/score",
+        {
+            "user_message": "What is the capital of France?",
+            "assistant_reply": "The capital of France is Paris.",
+        },
+    )
+    tokens = r["tokens"]
+    check("returns token scores", len(tokens) > 0, f"{len(tokens)} tokens")
+
+    t = tokens[0]
+    required = ("id", "text", "probability", "log_prob", "rank", "alternatives")
+    check("token has all fields", all(k in t for k in required))
+    check("probability in (0,1]", 0 < t["probability"] <= 1.0, f"{t['probability']:.4f}")
+    check("log_prob is non-positive", t["log_prob"] <= 0, f"{t['log_prob']:.4f}")
+    check("rank >= 1", t["rank"] >= 1)
+    check("has alternatives", len(t["alternatives"]) == 5, f"{len(t['alternatives'])} alts")
+
+    check("has perplexity", r["perplexity"] > 0, f"{r['perplexity']:.2f}")
+    check("has avg_log_prob", r["avg_log_prob"] < 0, f"{r['avg_log_prob']:.4f}")
+    check("has total_log_prob", r["total_log_prob"] < 0, f"{r['total_log_prob']:.4f}")
+    check("reply_length matches", r["reply_length"] == len(tokens))
+    check("prompt_length > 0", r["prompt_length"] > 0, str(r["prompt_length"]))
+    check("has elapsed_ms", r["elapsed_ms"] > 0, f"{r['elapsed_ms']:.0f}ms")
+
+
+def test_score_with_system_prompt():
+    print("\n== POST /api/score (system prompt) ==")
+    r = api(
+        "POST",
+        "/api/score",
+        {
+            "user_message": "Translate to French: Hello",
+            "assistant_reply": "Bonjour",
+            "system_prompt": "You are a translator.",
+        },
+    )
+    check("returns tokens", len(r["tokens"]) > 0)
+    check("prompt longer with sys prompt", r["prompt_length"] > 20, str(r["prompt_length"]))
+
+
+def test_score_validation():
+    print("\n== POST /api/score (validation) ==")
+    try:
+        api("POST", "/api/score", {"user_message": "", "assistant_reply": "test"})
+        check("rejects empty user_message", False, "no error raised")
+    except urllib.error.HTTPError as e:
+        check("rejects empty user_message", e.code == 400, f"HTTP {e.code}")
+
+    try:
+        api("POST", "/api/score", {"user_message": "test", "assistant_reply": ""})
+        check("rejects empty assistant_reply", False, "no error raised")
+    except urllib.error.HTTPError as e:
+        check("rejects empty assistant_reply", e.code == 400, f"HTTP {e.code}")
+
+
 if __name__ == "__main__":
     test_health()
     test_model()
@@ -127,4 +186,7 @@ if __name__ == "__main__":
     test_predict_incremental()
     test_predict_cached_logits()
     test_reset()
+    test_score_basic()
+    test_score_with_system_prompt()
+    test_score_validation()
     raise SystemExit(summary())

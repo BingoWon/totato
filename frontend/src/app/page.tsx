@@ -1,5 +1,5 @@
-import Explorer from "@/components/Explorer";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-	return <Explorer />;
+export default function RootPage() {
+	redirect("/explorer");
 }

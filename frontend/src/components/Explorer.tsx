@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type Distribution, type ModelInfo, type TokenCandidate, type TokenSpan } from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
@@ -158,79 +157,56 @@ export default function Explorer() {
 	}, []);
 
 	return (
-		<div className="h-screen flex flex-col">
-			<header className="shrink-0 border-b border-zinc-800/60 px-6 py-3.5 flex items-center justify-between">
-				<div>
-					<h1 className="text-base font-semibold tracking-tight">Token Explorer</h1>
-					<p className="text-[11px] text-zinc-500 mt-0.5">Interactive Next Token Prediction</p>
-				</div>
-				<div className="flex items-center gap-3">
-					{systemPrompt ? (
-						<span className="text-[10px] text-emerald-500/80 border border-emerald-800/40 px-2 py-0.5 rounded">
-							Chat Template Active
-						</span>
-					) : (
-						<span className="text-[10px] text-zinc-600 border border-zinc-800/40 px-2 py-0.5 rounded">
-							Raw Completion
-						</span>
-					)}
-					<Link href="/scorer" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
-						Likelihood Scorer →
-					</Link>
-				</div>
-			</header>
-
-			<div className="flex flex-1 min-h-0">
-				<main className="flex-1 flex flex-col min-h-0">
-					<section className="shrink-0 border-b border-zinc-800/60 p-5">
-						<TokenEditor
-							ref={editorRef}
-							text={text}
-							tokens={tokens}
-							charOffset={charOffset}
-							onTextChange={handleTextChange}
-							onCharOffsetChange={setCharOffset}
-							onForcePredict={forcePredict}
-						/>
-						{error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-						<div className="flex items-center gap-3 mt-2 text-[10px] text-zinc-600">
-							<span>{tokens.length} tokens</span>
-							<span>·</span>
-							<span>{text.length} chars</span>
-							{loading && (
-								<>
-									<span>·</span>
-									<span className="text-violet-400 animate-pulse">Predicting…</span>
-								</>
-							)}
-							<span className="ml-auto opacity-50">←→ nav · ⌫ del token · ⌘⌫ clear · ⌘↵ predict</span>
-						</div>
-					</section>
-
-					<section className="flex-1 min-h-0">
-						{distribution?.tokens.length ? (
-							<TokenList tokens={distribution.tokens} onSelect={selectToken} disabled={loading} />
-						) : (
-							<div className="h-full flex items-center justify-center text-zinc-600 text-sm">
-								{loading ? "Processing…" : "Type something to see predictions"}
-							</div>
-						)}
-					</section>
-				</main>
-
-				<aside className="w-72 shrink-0 border-l border-zinc-800/60 overflow-y-auto">
-					<ParamsPanel
-						temperature={temperature}
-						topK={topK}
-						onTemperatureChange={handleTemperatureChange}
-						onTopKChange={handleTopKChange}
-						systemPrompt={systemPrompt}
-						onSystemPromptChange={handleSystemPromptChange}
-						modelInfo={modelInfo}
-						distribution={distribution}
+		<div className="h-full flex">
+			<main className="flex-1 flex flex-col min-h-0">
+				<section className="shrink-0 border-b border-zinc-800/60 p-5">
+					<TokenEditor
+						ref={editorRef}
+						text={text}
+						tokens={tokens}
+						charOffset={charOffset}
+						onTextChange={handleTextChange}
+						onCharOffsetChange={setCharOffset}
+						onForcePredict={forcePredict}
 					/>
-				</aside>
-			</div>
+					{error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+					<div className="flex items-center gap-3 mt-2 text-[10px] text-zinc-600">
+						<span>{tokens.length} tokens</span>
+						<span>·</span>
+						<span>{text.length} chars</span>
+						{loading && (
+							<>
+								<span>·</span>
+								<span className="text-violet-400 animate-pulse">Predicting…</span>
+							</>
+						)}
+						<span className="ml-auto opacity-50">←→ nav · ⌫ del token · ⌘⌫ clear · ⌘↵ predict</span>
+					</div>
+				</section>
+
+				<section className="flex-1 min-h-0">
+					{distribution?.tokens.length ? (
+						<TokenList tokens={distribution.tokens} onSelect={selectToken} disabled={loading} />
+					) : (
+						<div className="h-full flex items-center justify-center text-zinc-600 text-sm">
+							{loading ? "Processing…" : "Type something to see predictions"}
+						</div>
+					)}
+				</section>
+			</main>
+
+			<aside className="w-72 shrink-0 border-l border-zinc-800/60 overflow-y-auto">
+				<ParamsPanel
+					temperature={temperature}
+					topK={topK}
+					onTemperatureChange={handleTemperatureChange}
+					onTopKChange={handleTopKChange}
+					systemPrompt={systemPrompt}
+					onSystemPromptChange={handleSystemPromptChange}
+					modelInfo={modelInfo}
+					distribution={distribution}
+				/>
+			</aside>
 		</div>
 	);
 }
