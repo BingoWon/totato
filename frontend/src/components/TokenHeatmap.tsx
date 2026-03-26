@@ -11,10 +11,12 @@ interface Props {
 
 export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 	const sel = selected !== null ? tokens[selected] : null;
+	const topAlt = sel?.alternatives[0];
+	const isTopPick = sel && sel.rank === 1;
 
 	return (
-		<div className="flex flex-col h-full">
-			<div className="flex-1 overflow-y-auto px-5 py-4">
+		<div className="space-y-3">
+			<div className="bg-zinc-900/40 border border-zinc-800/40 rounded-xl px-5 py-4">
 				<div className="font-mono text-sm leading-loose whitespace-pre-wrap break-all">
 					{tokens.map((token, i) => (
 						<span
@@ -25,57 +27,58 @@ export default function TokenHeatmap({ tokens, selected, onSelect }: Props) {
 							onKeyDown={(e) => {
 								if (e.key === "Enter" || e.key === " ") onSelect(selected === i ? null : i);
 							}}
-							className={`rounded-[3px] px-px cursor-pointer select-none transition-all ${
-								selected === i ? "ring-2 ring-white/50 scale-110" : "hover:brightness-125"
+							className={`rounded px-0.5 cursor-pointer select-none transition-all ${
+								selected === i ? "ring-2 ring-white/40 scale-105" : "hover:ring-1 hover:ring-white/20"
 							}`}
 							style={{ backgroundColor: probBg(token.probability) }}
-							title={`"${token.text}" — ${fmtPct(token.probability)} (rank ${token.rank})`}
 						>
 							{renderText(token.text)}
 						</span>
 					))}
 				</div>
-
-				<div className="flex items-center gap-2 mt-4 text-[10px] text-zinc-500">
-					<span>Probability:</span>
-					<div className="flex h-2.5 rounded-full overflow-hidden w-40">
-						{[0, 1, 2, 3, 4].map((i) => (
-							<div key={i} className="flex-1" style={{ backgroundColor: probBg(10 ** -(4 - i)) }} />
-						))}
-					</div>
-					<span>Low → High</span>
-				</div>
+				<p className="text-[10px] text-zinc-600 mt-3">Click any token to see what the model expected</p>
 			</div>
 
 			{sel && (
-				<div className="shrink-0 border-t border-zinc-800/50 px-5 py-4">
-					<div className="flex items-baseline gap-3 mb-3">
-						<span className="font-mono text-sm" style={{ backgroundColor: probBg(sel.probability) }}>
-							{formatDisplay(sel.text)}
-						</span>
-						<span className="text-xs text-zinc-400">
-							rank {sel.rank} · {fmtPct(sel.probability)} · log {sel.log_prob.toFixed(2)}
-						</span>
+				<div className="bg-zinc-900/40 border border-zinc-800/40 rounded-xl px-5 py-4 space-y-3">
+					<div>
+						<div className="flex items-baseline gap-2 mb-1">
+							<span className="font-mono text-base px-1 rounded" style={{ backgroundColor: probBg(sel.probability) }}>
+								{formatDisplay(sel.text)}
+							</span>
+							<span className="text-sm text-zinc-300">{fmtPct(sel.probability)}</span>
+						</div>
+						<p className="text-xs text-zinc-500">
+							{isTopPick
+								? "This was exactly what the model expected."
+								: `The model expected "${topAlt?.text.trim()}" instead — this was its #${sel.rank} pick.`}
+						</p>
 					</div>
-					<div className="space-y-1.5">
+
+					<div className="space-y-1">
+						<p className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1.5">Model's top predictions</p>
 						{sel.alternatives.map((alt, i) => {
 							const maxP = sel.alternatives[0]?.probability ?? 1;
+							const isActual = alt.id === sel.id;
 							return (
-								<div key={alt.id} className="flex items-center gap-2 text-xs">
-									<span className="text-zinc-600 w-4 text-right font-mono">{i + 1}</span>
-									<span className={`font-mono w-24 truncate ${alt.id === sel.id ? "text-zinc-100" : "text-zinc-400"}`}>
+								<div key={alt.id} className="flex items-center gap-2 text-xs h-6">
+									<span className="text-zinc-600 w-4 text-right font-mono shrink-0">{i + 1}</span>
+									<span
+										className={`font-mono w-20 truncate shrink-0 ${isActual ? "text-zinc-100 font-medium" : "text-zinc-500"}`}
+									>
 										{formatDisplay(alt.text)}
 									</span>
-									<div className="flex-1 h-3 bg-zinc-800/60 rounded-sm overflow-hidden">
+									{isActual && <span className="text-[9px] text-zinc-600 shrink-0">← actual</span>}
+									<div className="flex-1 h-2 bg-zinc-800/60 rounded-full overflow-hidden">
 										<div
-											className="h-full rounded-sm"
+											className="h-full rounded-full transition-all duration-300"
 											style={{
-												width: `${(alt.probability / maxP) * 100}%`,
+												width: `${Math.max((alt.probability / maxP) * 100, 0.5)}%`,
 												backgroundColor: probBg(alt.probability),
 											}}
 										/>
 									</div>
-									<span className="font-mono text-zinc-500 w-16 text-right">{fmtPct(alt.probability)}</span>
+									<span className="font-mono text-zinc-500 w-16 text-right shrink-0">{fmtPct(alt.probability)}</span>
 								</div>
 							);
 						})}
@@ -95,6 +98,7 @@ function probBg(p: number): string {
 
 function fmtPct(p: number): string {
 	const pct = p * 100;
+	if (pct >= 99.95) return "~100%";
 	if (pct < 0.01) return "<0.01%";
 	if (pct < 1) return `${pct.toFixed(2)}%`;
 	return `${pct.toFixed(1)}%`;
