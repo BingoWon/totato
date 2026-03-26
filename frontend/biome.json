@@ -12,7 +12,8 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"a11y": { "useSemanticElements": "off" }
+			"a11y": { "useSemanticElements": "off" },
+			"suspicious": { "noArrayIndexKey": "off" }
 		}
 	},
 	"formatter": {

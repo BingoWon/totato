@@ -1,3 +1,4 @@
+import math
 import threading
 import time
 
@@ -170,6 +171,123 @@ class TokenEngine:
             "sequence_length": len(self._cached_tokens),
             "vocab_size": int(probs.shape[0]),
         }
+
+    def score(
+        self,
+        user_message: str,
+        assistant_reply: str,
+        system_prompt: str | None = None,
+        top_k: int = 5,
+    ) -> dict | None:
+        gen = self._next_gen()
+
+        with self._lock:
+            if not self._is_current(gen):
+                return None
+
+            prompt_msgs: list[dict] = []
+            if system_prompt:
+                prompt_msgs.append({"role": "system", "content": system_prompt})
+            prompt_msgs.append({"role": "user", "content": user_message})
+
+            full_msgs = [*prompt_msgs, {"role": "assistant", "content": assistant_reply}]
+
+            prompt_tokens = self.tokenizer.apply_chat_template(
+                prompt_msgs, add_generation_prompt=True
+            )
+            full_tokens = self.tokenizer.apply_chat_template(full_msgs, add_generation_prompt=False)
+
+            reply_start = len(prompt_tokens)
+            if reply_start >= len(full_tokens):
+                return {
+                    "tokens": [],
+                    "total_log_prob": 0,
+                    "avg_log_prob": 0,
+                    "perplexity": 1,
+                    "prompt_length": reply_start,
+                    "reply_length": 0,
+                    "elapsed_ms": 0,
+                }
+
+            t0 = time.perf_counter()
+            try:
+                token_results = self._score_forward(full_tokens, reply_start, top_k, gen)
+            except Interrupted:
+                return None
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
+            log_probs = [t["log_prob"] for t in token_results]
+            total_lp = sum(log_probs)
+            n = len(log_probs)
+            avg_lp = total_lp / n if n else 0
+
+            return {
+                "tokens": token_results,
+                "total_log_prob": round(total_lp, 4),
+                "avg_log_prob": round(avg_lp, 4),
+                "perplexity": round(math.exp(-avg_lp), 4) if n else 1,
+                "prompt_length": reply_start,
+                "reply_length": n,
+                "elapsed_ms": round(elapsed_ms, 1),
+            }
+
+    def _score_forward(
+        self, tokens: list[int], reply_start: int, top_k: int, gen: int
+    ) -> list[dict]:
+        arr = mx.array(tokens)
+        total = len(arr)
+        cache = make_prompt_cache(self.model)
+        pos = 0
+        results = []
+
+        while pos < total:
+            if not self._is_current(gen):
+                raise Interrupted
+
+            end = min(pos + PREFILL_CHUNK, total)
+            logits = self.model(arr[pos:end][None], cache=cache)
+            mx.eval([c.state for c in cache])
+
+            for j in range(end - pos):
+                target_idx = pos + j + 1
+                if target_idx < reply_start or target_idx >= total:
+                    continue
+
+                logit_vec = logits[0, j, :]
+                target_id = tokens[target_idx]
+                probs = mx.softmax(logit_vec)
+                target_prob = probs[target_id]
+                rank = (probs > target_prob).sum()
+
+                k = min(top_k, probs.shape[0])
+                top_idx = mx.argpartition(-probs, kth=k - 1)[:k]
+                top_p = probs[top_idx]
+                order = mx.argsort(-top_p)
+                top_idx, top_p = top_idx[order], top_p[order]
+                mx.eval(target_prob, rank, top_idx, top_p)
+
+                prob_val = float(target_prob.item())
+                results.append(
+                    {
+                        "id": int(target_id),
+                        "text": self.tokenizer.decode([int(target_id)]),
+                        "probability": prob_val,
+                        "log_prob": math.log(max(prob_val, 1e-30)),
+                        "rank": int(rank.item()) + 1,
+                        "alternatives": [
+                            {
+                                "id": int(top_idx[i].item()),
+                                "text": self.tokenizer.decode([int(top_idx[i].item())]),
+                                "probability": float(top_p[i].item()),
+                            }
+                            for i in range(k)
+                        ],
+                    }
+                )
+
+            pos = end
+
+        return results
 
     def tokenize(self, text: str) -> list[dict]:
         if not text:

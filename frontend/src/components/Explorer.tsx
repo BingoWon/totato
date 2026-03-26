@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, type Distribution, type ModelInfo, type TokenCandidate, type TokenSpan } from "@/lib/api";
 import ParamsPanel from "./ParamsPanel";
@@ -163,15 +164,20 @@ export default function Explorer() {
 					<h1 className="text-base font-semibold tracking-tight">Token Explorer</h1>
 					<p className="text-[11px] text-zinc-500 mt-0.5">Interactive Next Token Prediction</p>
 				</div>
-				{systemPrompt ? (
-					<span className="text-[10px] text-emerald-500/80 border border-emerald-800/40 px-2 py-0.5 rounded">
-						Chat Template Active
-					</span>
-				) : (
-					<span className="text-[10px] text-zinc-600 border border-zinc-800/40 px-2 py-0.5 rounded">
-						Raw Completion
-					</span>
-				)}
+				<div className="flex items-center gap-3">
+					{systemPrompt ? (
+						<span className="text-[10px] text-emerald-500/80 border border-emerald-800/40 px-2 py-0.5 rounded">
+							Chat Template Active
+						</span>
+					) : (
+						<span className="text-[10px] text-zinc-600 border border-zinc-800/40 px-2 py-0.5 rounded">
+							Raw Completion
+						</span>
+					)}
+					<Link href="/scorer" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
+						Likelihood Scorer →
+					</Link>
+				</div>
 			</header>
 
 			<div className="flex flex-1 min-h-0">

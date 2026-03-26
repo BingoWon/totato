@@ -33,6 +33,25 @@ export interface PredictResponse {
 	distribution: Distribution;
 }
 
+export interface TokenScore {
+	id: number;
+	text: string;
+	probability: number;
+	log_prob: number;
+	rank: number;
+	alternatives: { id: number; text: string; probability: number }[];
+}
+
+export interface ScoreResult {
+	tokens: TokenScore[];
+	total_log_prob: number;
+	avg_log_prob: number;
+	perplexity: number;
+	prompt_length: number;
+	reply_length: number;
+	elapsed_ms: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, {
 		headers: { "Content-Type": "application/json" },
@@ -61,6 +80,13 @@ export const api = {
 		request<PredictResponse>("/api/predict", {
 			method: "POST",
 			body: JSON.stringify({ text, system_prompt: systemPrompt, temperature, top_k: topK }),
+			signal,
+		}),
+
+	score: (userMessage: string, assistantReply: string, systemPrompt: string | null, signal?: AbortSignal) =>
+		request<ScoreResult>("/api/score", {
+			method: "POST",
+			body: JSON.stringify({ user_message: userMessage, assistant_reply: assistantReply, system_prompt: systemPrompt }),
 			signal,
 		}),
 

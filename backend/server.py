@@ -24,6 +24,12 @@ class TokenizeRequest(BaseModel):
     text: str
 
 
+class ScoreRequest(BaseModel):
+    user_message: str
+    assistant_reply: str
+    system_prompt: str | None = None
+
+
 engine = TokenEngine(MODEL_PATH)
 
 
@@ -66,6 +72,18 @@ def predict(req: PredictRequest):
     if result is None:
         raise HTTPException(409, "Superseded by newer request")
     return {"distribution": result}
+
+
+@app.post("/api/score")
+def score(req: ScoreRequest):
+    if not engine.loaded:
+        raise HTTPException(503, "Model not loaded")
+    if not req.user_message.strip() or not req.assistant_reply.strip():
+        raise HTTPException(400, "Both user_message and assistant_reply are required")
+    result = engine.score(req.user_message, req.assistant_reply, req.system_prompt)
+    if result is None:
+        raise HTTPException(409, "Superseded by newer request")
+    return result
 
 
 @app.post("/api/reset")
