@@ -88,10 +88,21 @@ export const api = {
 			signal,
 		}),
 
-	score: (userMessage: string, assistantReply: string, systemPrompt: string | null, signal?: AbortSignal) =>
+	score: (
+		userMessage: string,
+		assistantReply: string,
+		systemPrompt: string | null,
+		topK: number,
+		signal?: AbortSignal,
+	) =>
 		request<ScoreResult>("/api/score", {
 			method: "POST",
-			body: JSON.stringify({ user_message: userMessage, assistant_reply: assistantReply, system_prompt: systemPrompt }),
+			body: JSON.stringify({
+				user_message: userMessage,
+				assistant_reply: assistantReply,
+				system_prompt: systemPrompt,
+				top_k: topK,
+			}),
 			signal,
 		}),
 

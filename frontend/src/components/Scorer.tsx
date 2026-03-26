@@ -13,6 +13,7 @@ export default function Scorer() {
 	const [selected, setSelected] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [topK, setTopK] = useState(5);
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
 
@@ -36,7 +37,7 @@ export default function Scorer() {
 		setSelected(null);
 
 		try {
-			const res = await api.score(userMessage, assistantReply, systemPrompt || null, controller.signal);
+			const res = await api.score(userMessage, assistantReply, systemPrompt || null, topK, controller.signal);
 			if (!controller.signal.aborted) setResult(res);
 		} catch (e) {
 			if (controller.signal.aborted || e instanceof SupersededError) return;
@@ -96,6 +97,27 @@ export default function Scorer() {
 								rows={4}
 								className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-3 py-2.5 text-xs font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
 							/>
+						</label>
+						<label className="block">
+							<div className="flex justify-between mb-1.5">
+								<span className="text-[10px] uppercase tracking-wider text-zinc-500">Alternatives per Token</span>
+								<span className="font-mono text-zinc-500 text-xs">{topK}</span>
+							</div>
+							<input
+								type="range"
+								min={1}
+								max={20}
+								value={topK}
+								onChange={(e) => setTopK(Number.parseInt(e.target.value, 10))}
+								className="w-full"
+							/>
+							<div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+								<span>Minimal</span>
+								<span>Detailed</span>
+							</div>
+							<p className="text-[10px] text-zinc-700 mt-1">
+								How many top candidate tokens to show in the detail view for each position.
+							</p>
 						</label>
 						{modelInfo && (
 							<div className="text-[10px] text-zinc-600 space-y-0.5">
