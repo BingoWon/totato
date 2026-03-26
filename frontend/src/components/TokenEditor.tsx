@@ -17,12 +17,15 @@ export interface TokenEditorHandle {
 	focus: () => void;
 }
 
-const TOKEN_COLORS = [
-	"bg-sky-500/20 hover:bg-sky-500/30",
-	"bg-emerald-500/20 hover:bg-emerald-500/30",
-	"bg-amber-500/20 hover:bg-amber-500/30",
-	"bg-pink-500/20 hover:bg-pink-500/30",
-	"bg-violet-500/20 hover:bg-violet-500/30",
+const PALETTE = [
+	"rgba(96, 165, 250, 0.30)",
+	"rgba(52, 211, 153, 0.30)",
+	"rgba(251, 191, 36, 0.28)",
+	"rgba(244, 114, 182, 0.30)",
+	"rgba(167, 139, 250, 0.30)",
+	"rgba(251, 146, 60, 0.28)",
+	"rgba(45, 212, 191, 0.30)",
+	"rgba(129, 140, 248, 0.30)",
 ];
 
 const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
@@ -217,7 +220,8 @@ const TokenEditor = forwardRef<TokenEditorHandle, Props>(function TokenEditor(
 								<span
 									role="button"
 									tabIndex={-1}
-									className={`${TOKEN_COLORS[i % TOKEN_COLORS.length]} rounded-[3px] px-px transition-colors cursor-pointer select-none`}
+									className="rounded-sm cursor-pointer select-none token-span"
+									style={{ backgroundColor: PALETTE[i % PALETTE.length] }}
 									onClick={(e) => handleTokenClick(e, i)}
 									onKeyDown={(e) => {
 										if (e.key === "Enter" || e.key === " ") handleTokenClick(e as unknown as React.MouseEvent, i);
