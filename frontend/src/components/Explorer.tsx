@@ -195,7 +195,7 @@ export default function Explorer() {
 				</section>
 			</main>
 
-			<aside className="w-72 shrink-0 border-l border-zinc-800/60 overflow-y-auto">
+			<aside className="w-80 shrink-0 border-l border-zinc-800/60 overflow-y-auto">
 				<ParamsPanel
 					temperature={temperature}
 					topK={topK}

@@ -6,7 +6,6 @@ import TokenHeatmap from "./TokenHeatmap";
 
 export default function Scorer() {
 	const [systemPrompt, setSystemPrompt] = useState("");
-	const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 	const [userMessage, setUserMessage] = useState("");
 	const [assistantReply, setAssistantReply] = useState("");
 	const [result, setResult] = useState<ScoreResult | null>(null);
@@ -14,7 +13,6 @@ export default function Scorer() {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
-	const [showTechnical, setShowTechnical] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
 	useEffect(() => {
@@ -35,7 +33,6 @@ export default function Scorer() {
 		setError(null);
 		setResult(null);
 		setSelected(null);
-		setShowTechnical(false);
 
 		try {
 			const res = await api.score(userMessage, assistantReply, systemPrompt || null, controller.signal);
@@ -54,60 +51,61 @@ export default function Scorer() {
 
 	return (
 		<div className="h-full overflow-y-auto">
-			<div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-				<section className="space-y-3">
-					{showSystemPrompt || systemPrompt ? (
+			<div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+				<section className="grid grid-cols-[1fr_280px] gap-5">
+					<div className="space-y-3">
+						<label className="block">
+							<span className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">User Message</span>
+							<textarea
+								value={userMessage}
+								onChange={(e) => setUserMessage(e.target.value)}
+								placeholder="What would the user say?"
+								rows={3}
+								className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+							/>
+						</label>
+						<label className="block">
+							<span className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">Assistant Reply</span>
+							<textarea
+								value={assistantReply}
+								onChange={(e) => setAssistantReply(e.target.value)}
+								placeholder="What reply do you want to score?"
+								rows={3}
+								className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+							/>
+						</label>
+						<button
+							type="button"
+							onClick={handleScore}
+							disabled={!canScore}
+							className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-violet-600/80 hover:bg-violet-500/80 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
+						>
+							{loading ? "Analyzing…" : "Score Likelihood"}
+						</button>
+						{error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+					</div>
+
+					<div className="space-y-4">
 						<label className="block">
 							<span className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">System Prompt</span>
 							<textarea
 								value={systemPrompt}
 								onChange={(e) => setSystemPrompt(e.target.value)}
-								placeholder="Optional instructions for the model…"
-								rows={2}
-								className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-4 py-2.5 text-sm font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
+								placeholder="Optional model instructions…"
+								rows={4}
+								className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-3 py-2.5 text-xs font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
 							/>
 						</label>
-					) : (
-						<button
-							type="button"
-							onClick={() => setShowSystemPrompt(true)}
-							className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-						>
-							+ Add system prompt
-						</button>
-					)}
-
-					<label className="block">
-						<span className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">User Message</span>
-						<textarea
-							value={userMessage}
-							onChange={(e) => setUserMessage(e.target.value)}
-							placeholder="What would the user say?"
-							rows={3}
-							className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
-						/>
-					</label>
-
-					<label className="block">
-						<span className="block text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">Assistant Reply</span>
-						<textarea
-							value={assistantReply}
-							onChange={(e) => setAssistantReply(e.target.value)}
-							placeholder="What reply do you want to score?"
-							rows={3}
-							className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-lg px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:border-zinc-600 placeholder:text-zinc-700"
-						/>
-					</label>
-
-					<button
-						type="button"
-						onClick={handleScore}
-						disabled={!canScore}
-						className="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-violet-600/80 hover:bg-violet-500/80 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
-					>
-						{loading ? "Analyzing…" : "Score Likelihood"}
-					</button>
-					{error && <p className="text-red-400 text-xs mt-1">{error}</p>}
+						{modelInfo && (
+							<div className="text-[10px] text-zinc-600 space-y-0.5">
+								<p className="font-mono text-zinc-500">{modelInfo.model_path.split("/").pop()}</p>
+								<p>
+									{(modelInfo.total_parameters / 1e9).toFixed(1)}B params · {modelInfo.bits_per_weight} bits ·{" "}
+									{modelInfo.vocab_size.toLocaleString()} vocab
+								</p>
+							</div>
+						)}
+					</div>
 				</section>
 
 				{loading && (
@@ -120,15 +118,21 @@ export default function Scorer() {
 					<>
 						<section className="flex items-center gap-6 bg-zinc-900/40 border border-zinc-800/40 rounded-xl p-6">
 							<ConfidenceRing value={confidence} />
-							<div className="space-y-1.5">
-								<p className="text-lg font-semibold">
-									<span className={interp.color}>{interp.label}</span>
-								</p>
-								<p className="text-sm text-zinc-400">{interp.description}</p>
-								<p className="text-xs text-zinc-600">
-									{result.reply_length} tokens scored · {result.elapsed_ms.toFixed(0)}ms
-									{modelInfo && <> · {modelInfo.model_path.split("/").pop()}</>}
-								</p>
+							<div className="flex-1 space-y-2">
+								<div>
+									<p className="text-lg font-semibold">
+										<span className={interp.color}>{interp.label}</span>
+									</p>
+									<p className="text-sm text-zinc-400">{interp.description}</p>
+								</div>
+								<div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+									<Stat label="Perplexity" value={result.perplexity.toFixed(2)} hint="Lower = more expected" />
+									<Stat label="Avg Log-Prob" value={result.avg_log_prob.toFixed(3)} hint="Per token" />
+									<Stat label="Total Log-Prob" value={result.total_log_prob.toFixed(3)} hint="All tokens" />
+									<Stat label="Reply Tokens" value={String(result.reply_length)} />
+									<Stat label="Prompt Tokens" value={String(result.prompt_length)} />
+									<Stat label="Inference" value={`${result.elapsed_ms.toFixed(0)}ms`} />
+								</div>
 							</div>
 						</section>
 
@@ -146,37 +150,18 @@ export default function Scorer() {
 							</div>
 							<TokenHeatmap tokens={result.tokens} selected={selected} onSelect={setSelected} />
 						</section>
-
-						<button
-							type="button"
-							onClick={() => setShowTechnical(!showTechnical)}
-							className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
-						>
-							{showTechnical ? "▾ Hide" : "▸ Show"} technical details
-						</button>
-						{showTechnical && (
-							<div className="grid grid-cols-3 gap-3 text-xs">
-								<TechCard
-									label="Perplexity"
-									value={result.perplexity.toFixed(2)}
-									hint="Lower = more expected (1 is perfect)"
-								/>
-								<TechCard
-									label="Avg Log-Prob"
-									value={result.avg_log_prob.toFixed(3)}
-									hint="Average log probability per token"
-								/>
-								<TechCard
-									label="Total Log-Prob"
-									value={result.total_log_prob.toFixed(3)}
-									hint="Sum of all token log probabilities"
-								/>
-							</div>
-						)}
 					</>
 				)}
 			</div>
 		</div>
+	);
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+	return (
+		<span className="text-zinc-500" title={hint}>
+			{label} <span className="font-mono text-zinc-300">{value}</span>
+		</span>
 	);
 }
 
@@ -240,16 +225,6 @@ function interpret(v: number): { label: string; color: string; description: stri
 			description: "The model would not typically generate this reply.",
 		};
 	return { label: "Very Unlikely", color: "text-red-400", description: "The model finds this reply very unexpected." };
-}
-
-function TechCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-	return (
-		<div className="bg-zinc-900/40 border border-zinc-800/30 rounded-lg px-3 py-2.5">
-			<p className="text-zinc-500 text-[10px] uppercase tracking-wider">{label}</p>
-			<p className="font-mono text-zinc-300 text-sm mt-0.5">{value}</p>
-			<p className="text-zinc-600 text-[10px] mt-1">{hint}</p>
-		</div>
-	);
 }
 
 function probBg(p: number): string {
